@@ -1,0 +1,312 @@
+// =====================================================================================
+//  TracePack PLC - TPI 2026 Grupo 1 (H3) - Siemens S7-1200 CPU 1214C DC/DC/DC
+//  Fuente SCL (IEC 61131-3 ST) para importar en TIA Portal: "Fuentes externas" -> "Generar bloques".
+//  FB_Estacion : secuencia minima E0-E5 de la estacion de lectura y desvio (seccion 12 del TPI)
+//  FB_AutorizacionAMR : autorizacion de recogidas y depositos del AMR (seccion 20)
+//  Los tiempos son los supuestos de la simulacion: se ajustan en la puesta en marcha (seccion 15.5).
+//  Las decisiones de control fisico quedan en el PLC; HMI y servicio de integracion solo solicitan/confirman.
+// =====================================================================================
+
+FUNCTION_BLOCK "FB_Estacion"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 1.0
+   VAR_INPUT
+      S_ING : Bool;              // ingreso de bulto al alimentador (fotoelectrico)
+      S_ZONA : Bool;             // presencia en la estacion de lectura y desvio
+      S_EXT : Bool;              // cilindro extendido (fin de carrera)
+      S_RET : Bool;              // cilindro en reposo (fin de carrera)
+      S_PASO : Bool;             // paso del bulto por el carril de excepcion
+      S_EXC : Bool;              // zona de excepcion ocupada
+      VelEncoder : Real;         // m/s calculada desde el contador rapido (HSC1)
+      AcuFrenteListo : Bool;     // hay un bulto en la primera posicion de la acumulacion
+      // resultado consolidado de R1-R6 (bloque de lectores via PROFINET)
+      AdqFin : Bool;             // adquisicion finalizada con diagnosticos validos
+      AdqCodigoValido : Bool;    // codigo valido y coherente (repetidos consolidados)
+      AdqSinCodigo : Bool;       // adquisicion correcta sin codigo -> No Read
+      AdqError : Bool;           // comunicacion perdida, dato invalido o codigos contradictorios
+      // servicio de integracion con el ERP (mismo ID de ciclo)
+      RegConfirmado : Bool;
+      RegRechazado : Bool;
+      // comandos de la HMI (se toman por flanco) y condicion de causa resuelta
+      CmdIniciar : Bool;
+      CmdDetener : Bool;
+      CmdReconocer : Bool;
+      CmdRearmar : Bool;
+      CausaResuelta : Bool;      // verificaciones de planta OK (aire, posicion, comunicacion...)
+   END_VAR
+   VAR_OUTPUT
+      M_ACU : Bool;              // libera el bulto de la acumulacion hacia el alimentador
+      M_ALIM : Bool;             // marcha del alimentador (via variador)
+      M_INSP : Bool;             // marcha de la cinta de inspeccion (via variador)
+      Y_VUVG : Bool;             // bobina de la electrovalvula 5/2 monoestable
+      TrigLectores : Bool;       // disparo de la adquisicion R1-R6
+      RegSolicitud : Bool;       // solicitud de registro al servicio de integracion
+      Estado : Int;              // 0..5 = E0..E5 (para la HMI y el historico)
+      IdCiclo : DInt;            // ID unico por bulto (independiente del codigo)
+      Automatico : Bool;
+      AlarmaActiva : Bool;
+      AlarmaReconocida : Bool;
+      AlarmaCodigo : Int;        // 1 posicionamiento, 2 detencion, 3 lectura/comunicacion, 4 registro, 5 desvio, 6 liberacion
+      BalizaVerde : Bool;
+      BalizaAmbar : Bool;
+      BalizaRoja : Bool;
+   END_VAR
+   VAR
+      Fase : Int;                // subpaso dentro de cada etapa
+      EstadoAnt : Int;
+      FaseAnt : Int;
+      DetencionReq : Bool;
+      RegConfirmadoMem : Bool;
+      tFase : TON_TIME;
+      tQuieto : TON_TIME;
+      rIniciar : R_TRIG;
+      rDetener : R_TRIG;
+      rReconocer : R_TRIG;
+      rRearmar : R_TRIG;
+      rIngreso : R_TRIG;
+      rPaso : R_TRIG;
+      PasoVisto : Bool;
+      Blink : Bool;
+      tBlink : TON_TIME;
+   END_VAR
+   VAR CONSTANT
+      T_MAX_TRANSPORTE : Time := T#7S;
+      T_MAX_PARADA : Time := T#2S;
+      T_QUIETO : Time := T#200MS;    // encoder sin pulsos = cinta detenida
+      T_VENTANA_LECTURA : Time := T#3S;
+      T_MAX_REGISTRO : Time := T#3S; // ejemplo del historico 15.3.1
+      T_MAX_EXT : Time := T#2S;
+      T_MAX_PASO : Time := T#3S;
+      T_MAX_RET : Time := T#2S;
+      T_MAX_LIBERAR : Time := T#8S;
+   END_VAR
+
+BEGIN
+   // ---------- comandos del operador (solicitudes que el PLC acepta o rechaza) ----------
+   #rIniciar(CLK := #CmdIniciar);
+   #rDetener(CLK := #CmdDetener);
+   #rReconocer(CLK := #CmdReconocer);
+   #rRearmar(CLK := #CmdRearmar);
+   #rIngreso(CLK := #S_ING);
+   #rPaso(CLK := #S_PASO);
+   #tQuieto(IN := ABS(#VelEncoder) < 0.005, PT := #T_QUIETO);
+
+   // Iniciar: bloqueado con falla activa, desviador fuera de reposo o estacion ocupada sin ciclo
+   IF #rIniciar.Q AND NOT #AlarmaActiva AND #S_RET AND NOT (#S_ZONA AND #Estado = 0) THEN
+      #Automatico := TRUE;
+      #DetencionReq := FALSE;
+   END_IF;
+   IF #rDetener.Q THEN
+      #DetencionReq := TRUE;    // detencion controlada: se completa el ciclo en curso
+   END_IF;
+   IF #rReconocer.Q AND #AlarmaActiva THEN
+      #AlarmaReconocida := TRUE; // reconocer no elimina la causa ni rearma
+   END_IF;
+
+   // salidas en estado seguro por defecto; cada etapa habilita lo que necesita
+   #M_ACU := FALSE;
+   #M_ALIM := FALSE;
+   #M_INSP := FALSE;
+   #TrigLectores := FALSE;
+
+   CASE #Estado OF
+      0:  // ===== E0: ESPERANDO BULTO =====
+         #Y_VUVG := FALSE;
+         IF #DetencionReq THEN
+            #Automatico := FALSE;
+            #DetencionReq := FALSE;
+         END_IF;
+         IF #Automatico AND NOT #AlarmaActiva AND #S_RET AND NOT #S_ZONA THEN
+            IF #AcuFrenteListo OR #Fase = 1 THEN   // libera un solo bulto hacia el alimentador
+               #Fase := 1;
+               #M_ACU := TRUE;
+               #M_ALIM := TRUE;
+            END_IF;
+            IF #rIngreso.Q THEN                    // S_ING: nuevo ID de ciclo
+               #IdCiclo := #IdCiclo + 1;
+               #RegConfirmadoMem := FALSE;
+               #PasoVisto := FALSE;
+               #Estado := 1;
+               #Fase := 0;
+            END_IF;
+         END_IF;
+
+      1:  // ===== E1: POSICIONADO E IDENTIFICANDO =====
+         CASE #Fase OF
+            0:  // traslado hasta S_ZONA
+               #M_ALIM := TRUE;
+               #M_INSP := TRUE;
+               IF #S_ZONA THEN
+                  #Fase := 1;                      // alimentador inhibido y parada solicitada
+               ELSIF #tFase.Q THEN
+                  #AlarmaCodigo := 1;
+               END_IF;
+            1:  // el encoder confirma la detencion
+               IF #tQuieto.Q THEN
+                  #Fase := 2;
+               ELSIF #tFase.Q THEN
+                  #AlarmaCodigo := 2;
+               END_IF;
+            2:  // adquisicion multidireccional R1-R6
+               #TrigLectores := TRUE;
+               IF #AdqError OR (#tFase.Q AND NOT #AdqFin) THEN
+                  #AlarmaCodigo := 3;              // falla: NO se trata como No Read
+               ELSIF #AdqFin AND #AdqCodigoValido THEN
+                  #Estado := 2;
+                  #Fase := 0;
+               ELSIF #AdqFin AND #AdqSinCodigo THEN
+                  #Estado := 3;
+                  #Fase := 0;
+               END_IF;
+         END_CASE;
+
+      2:  // ===== E2: REGISTRANDO (bulto retenido hasta confirmar el mismo ID) =====
+         #RegSolicitud := TRUE;
+         IF #RegConfirmado THEN
+            #RegSolicitud := FALSE;
+            #RegConfirmadoMem := TRUE;
+            #Estado := 4;
+            #Fase := 0;
+         ELSIF #RegRechazado OR #tFase.Q THEN
+            #AlarmaCodigo := 4;                    // se conserva ID y codigo; se consulta antes de reintentar
+         END_IF;
+
+      3:  // ===== E3: DERIVANDO A EXCEPCION =====
+         CASE #Fase OF
+            0:  // interbloqueo: bulto presente, cinta detenida, cilindro en reposo y zona libre
+               IF #S_ZONA AND #tQuieto.Q AND #S_RET AND NOT #S_EXC THEN
+                  #Y_VUVG := TRUE;
+                  #Fase := 1;
+               END_IF;
+            1:  // extension confirmada por S_EXT
+               IF #S_EXT THEN
+                  #Fase := 2;
+               ELSIF #tFase.Q THEN
+                  #AlarmaCodigo := 5;
+               END_IF;
+            2:  // paso por el carril confirmado por S_PASO
+               IF #rPaso.Q THEN
+                  #PasoVisto := TRUE;
+               END_IF;
+               IF #PasoVisto THEN
+                  #Y_VUVG := FALSE;               // retraccion
+                  #Fase := 3;
+               ELSIF #tFase.Q THEN
+                  #AlarmaCodigo := 5;
+               END_IF;
+            3:  // retorno confirmado por S_RET
+               IF #S_RET THEN
+                  #Estado := 4;
+                  #Fase := 0;
+               ELSIF #tFase.Q THEN
+                  #AlarmaCodigo := 5;
+               END_IF;
+         END_CASE;
+
+      4:  // ===== E4: FINALIZANDO =====
+         IF #RegConfirmadoMem THEN
+            #M_INSP := TRUE;                       // evacuacion por la linea principal; alimentador inhibido
+         END_IF;
+         IF NOT #S_ZONA AND #S_RET THEN
+            #Estado := 0;                          // ciclo cerrado: estacion libre y desviador en reposo
+            #Fase := 0;
+         ELSIF #tFase.Q THEN
+            #AlarmaCodigo := 6;
+         END_IF;
+
+      5:  // ===== E5: FALLA O INTERVENCION REQUERIDA =====
+         #Y_VUVG := FALSE;                         // movimientos inhibidos (la 5/2 monoestable retrae)
+         IF #RegConfirmado THEN
+            #RegConfirmadoMem := TRUE;             // la consulta por ID recupero la confirmacion
+         END_IF;
+         // rearme deliberado: causa resuelta, alarma reconocida, desviador en reposo y un destino valido
+         IF #rRearmar.Q AND #CausaResuelta AND #AlarmaReconocida AND #S_RET
+            AND ((#RegConfirmadoMem AND #S_ZONA) OR NOT #S_ZONA) THEN
+            #AlarmaActiva := FALSE;
+            #AlarmaReconocida := FALSE;
+            #AlarmaCodigo := 0;
+            IF #S_ZONA THEN
+               #Estado := 4;                       // E5 -> E4: registro confirmado y bulto en la estacion
+            ELSE
+               #Estado := 0;                       // E5 -> E0: ciclo resuelto y documentado, estacion libre
+            END_IF;
+            #Fase := 0;
+         END_IF;                                   // si no se cumple, permanece en E5
+   END_CASE;
+
+   // cualquier condicion de falla lleva a E5 conservando el contexto del ciclo
+   IF #AlarmaCodigo <> 0 AND #Estado <> 5 THEN
+      #AlarmaActiva := TRUE;
+      #AlarmaReconocida := FALSE;
+      #RegSolicitud := FALSE;
+      #Estado := 5;
+   END_IF;
+
+   // temporizador de supervision: se reinicia al cambiar de etapa o de fase
+   IF #Estado <> #EstadoAnt OR #Fase <> #FaseAnt THEN
+      #tFase(IN := FALSE, PT := T#1S);
+   END_IF;
+   #EstadoAnt := #Estado;
+   #FaseAnt := #Fase;
+   CASE #Estado OF
+      1: #tFase(IN := TRUE, PT := SEL(G := #Fase = 0, IN0 := SEL(G := #Fase = 1, IN0 := #T_VENTANA_LECTURA, IN1 := #T_MAX_PARADA), IN1 := #T_MAX_TRANSPORTE));
+      2: #tFase(IN := TRUE, PT := #T_MAX_REGISTRO);
+      3: #tFase(IN := #Fase > 0, PT := SEL(G := #Fase = 1, IN0 := SEL(G := #Fase = 2, IN0 := #T_MAX_RET, IN1 := #T_MAX_PASO), IN1 := #T_MAX_EXT));
+      4: #tFase(IN := TRUE, PT := #T_MAX_LIBERAR);
+   ELSE
+      #tFase(IN := FALSE, PT := T#1S);
+   END_CASE;
+
+   // baliza: verde en automatico, ambar en excepcion o detenido, roja intermitente con alarma
+   #tBlink(IN := NOT #tBlink.Q, PT := T#500MS);
+   IF #tBlink.Q THEN
+      #Blink := NOT #Blink;
+   END_IF;
+   #BalizaVerde := #Automatico AND NOT #AlarmaActiva;
+   #BalizaAmbar := NOT #AlarmaActiva AND (#Estado = 3 OR NOT #Automatico);
+   #BalizaRoja := #AlarmaActiva AND #Blink;
+END_FUNCTION_BLOCK
+
+
+FUNCTION_BLOCK "FB_AutorizacionAMR"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 1.0
+   VAR_INPUT
+      Automatico : Bool;
+      DetencionReq : Bool;
+      AlarmaActiva : Bool;
+      S_CAMION : Bool;           // camion en posicion de descarga (nivelador apoyado)
+      CamionConCarga : Bool;     // informado por el controlador del AMR (vision 3D)
+      AcuCantidad : Int;         // bultos en la zona de acumulacion (S_CARGA, S_ACU y seguimiento)
+      AmrLlevandoBulto : Bool;
+      S_CARGA : Bool;            // punto de carga ocupado
+      ObstruccionAMR : Bool;     // lidar / parada de seguridad del AMR
+   END_VAR
+   VAR_OUTPUT
+      AutorizarRecogida : Bool;  // el AMR puede iniciar una nueva recogida
+      AutorizarDeposito : Bool;  // el AMR puede apoyar el bulto en el punto de carga
+      DetencionCoordinada : Bool; // detiene AMR y cinta de acumulacion; el AMR conserva la sujecion
+      MotivoEspera : Int;        // 0 ninguno, 1 sin camion, 2 acumulacion llena (espera normal), 3 alarma, 4 detenido
+   END_VAR
+   VAR CONSTANT
+      CAPACIDAD_ACU : Int := 3;
+   END_VAR
+
+BEGIN
+   #DetencionCoordinada := #ObstruccionAMR;
+   #AutorizarRecogida := FALSE;
+   IF NOT #Automatico OR #DetencionReq THEN
+      #MotivoEspera := 4;
+   ELSIF #AlarmaActiva OR #ObstruccionAMR THEN
+      #MotivoEspera := 3;
+   ELSIF NOT #S_CAMION OR NOT #CamionConCarga THEN
+      #MotivoEspera := 1;
+   ELSIF #AcuCantidad + BOOL_TO_INT(#AmrLlevandoBulto) >= #CAPACIDAD_ACU THEN
+      #MotivoEspera := 2;        // condicion normal de funcionamiento, no es alarma
+   ELSE
+      #MotivoEspera := 0;
+      #AutorizarRecogida := NOT #AmrLlevandoBulto;
+   END_IF;
+   // antes de depositar se comprueba que el punto de carga este libre
+   #AutorizarDeposito := #AmrLlevandoBulto AND NOT #S_CARGA AND NOT #DetencionCoordinada;
+END_FUNCTION_BLOCK

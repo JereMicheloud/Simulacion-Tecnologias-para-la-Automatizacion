@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "flexsim": {
+      "command": "uv",
+      "args": ["--directory", "C:\\Users\\jerem\\OneDrive\\Desktop\\Jere\\Facultad\\2026\\Simulación\\TP Simulación\\MCP_Flexsim", "run", "mcp_server/flexsim_mcp.py"],
+      "timeout": 180000
+    }
+  }
+}

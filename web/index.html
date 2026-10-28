@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TracePack PLC · Estación de identificación</title>
+<link rel="stylesheet" href="css/estilos.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="marca">
+    <span class="logo" aria-hidden="true">▣</span>
+    <div>
+      <h1>TracePack PLC</h1>
+      <p>Descarga robotizada, identificación y registro automático de bultos · TPI 2026 · Grupo 1 · H3 · UTN FRSFco</p>
+    </div>
+  </div>
+  <nav>
+    <a href="#vivo">Simulación en vivo</a>
+    <a href="#grafcet">Secuencia E0–E5</a>
+    <a href="#robot">Secuencia AMR</a>
+    <a href="#flexsim">Resultados FlexSim</a>
+    <a href="#arquitectura">Arquitectura</a>
+    <a href="#plc">PLC</a>
+    <a href="#blender">Modelo Blender</a>
+  </nav>
+</header>
+
+<main>
+<!-- ============ SIMULACION EN VIVO ============ -->
+<section id="vivo" class="vivo">
+  <div class="visor">
+    <div id="escena3d" aria-label="Vista 3D de la estación"></div>
+    <div class="visor-sup">
+      <div id="badgePaso" class="badge e0">E0 · ESPERANDO BULTO</div>
+      <div class="reloj">t = <span id="reloj">00:00.0</span></div>
+    </div>
+    <div class="visor-inf">
+      <div class="grupo">
+        <span>Cámara</span>
+        <button data-cam="planta">Planta</button>
+        <button data-cam="descarga">Descarga</button>
+        <button data-cam="general">Estación</button>
+        <button data-cam="desvio">Desviador</button>
+        <button data-cam="revision">Revisión</button>
+        <button data-cam="lectores">Lectores</button>
+      </div>
+      <div class="grupo">
+        <span>Velocidad</span>
+        <button data-vel="0.5">½×</button>
+        <button data-vel="1" class="on">1×</button>
+        <button data-vel="2">2×</button>
+        <button data-vel="4">4×</button>
+        <button data-vel="8">8×</button>
+        <button data-vel="16">16×</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkEtiquetas"> Etiquetas</label>
+      <button id="btnCasos" class="btn-casos">⚙ Escenarios</button>
+      <button id="btnDemo" class="btn-demo">▶ Demo guiada</button>
+    </div>
+    <div id="panelCasos" class="casos-panel oculto" role="dialog" aria-label="Escenarios y casos atípicos">
+      <div class="casos-cab">
+        <div><b>Escenarios y casos atípicos</b><small>Con el interruptor prendido, el caso puede ocurrir al azar en cada oportunidad. "Provocar" lo fuerza en la próxima, aunque esté apagado.</small></div>
+        <button id="btnCasosCerrar" aria-label="Cerrar escenarios">Cerrar ✕</button>
+      </div>
+      <div class="casos-oper">
+        <label class="sw-fila"><span class="sw"><input type="checkbox" role="switch" id="chkOperario"><span></span></span> <span><b>Operario de revisión en planta</b><small>Apagado: los No Read se juntan en el contenedor (máx. 8). Prendido: viene un operario y los lee uno por uno.</small></span></label>
+        <label class="sw-fila"><span class="sw"><input type="checkbox" role="switch" id="chkRobot" checked><span></span></span> <span><b>AMR habilitado</b><small>Apagado: el robot termina su recogida y espera.</small></span></label>
+        <label class="rng"><span><b>Lectura OK: <span id="lblOK">92</span> %</b><small> sin casos atípicos</small></span><input type="range" id="rngOK" min="50" max="100" value="92"></label>
+      </div>
+      <div class="casos-grid" id="casosGrid"></div>
+    </div>
+    <div id="demo" class="demo-panel oculto" role="status" aria-live="polite">
+      <div class="demo-cab"><b id="demoTit"></b><button id="btnDemoSalir" aria-label="Salir de la demo">Salir ✕</button></div>
+      <p id="demoTxt"></p>
+    </div>
+    <div id="cargando" class="cargando">Cargando modelo 3D de Blender…</div>
+    <div id="aviso" class="aviso"></div>
+  </div>
+
+  <aside class="hmi" aria-label="HMI local">
+    <div class="hmi-cab">
+      <h2>HMI · Descarga, lectura y desvío</h2>
+      <span id="modo" class="modo off">DETENIDO</span>
+    </div>
+    <div class="cmds">
+      <button id="btnIniciar" class="btn ok" aria-label="Iniciar operación automática">▶ Iniciar</button>
+      <button id="btnDetener" class="btn" aria-label="Detener operación">■ Detener</button>
+      <button id="btnReconocer" class="btn warn" aria-label="Reconocer alarma">Reconocer</button>
+      <button id="btnRearmar" class="btn" aria-label="Rearmar sistema">Rearmar</button>
+    </div>
+    <p id="bloqueo" class="bloqueo" aria-live="polite"></p>
+
+    <div id="alarma" class="alarma oculto" role="alert">
+      <div class="alarma-tit"><span class="pri">PRIORIDAD ALTA</span> <b id="alarmaTipo"></b></div>
+      <p id="alarmaCausa"></p>
+      <p class="alarma-est">Estado: <span id="alarmaEstado"></span></p>
+      <button id="btnResolver" class="btn sec">Resolver causa en planta (operario)</button>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Vistas de la HMI">
+      <button role="tab" id="t-proceso" aria-controls="p-proceso" aria-selected="true">Proceso</button>
+      <button role="tab" id="t-descarga" aria-controls="p-descarga" aria-selected="false">Descarga</button>
+      <button role="tab" id="t-senales" aria-controls="p-senales" aria-selected="false">Señales</button>
+    </div>
+
+    <div class="panel" id="p-proceso" role="tabpanel" aria-labelledby="t-proceso">
+      <div class="datos4">
+        <div><small>Estado del ciclo</small><b id="dEstado">Esperando bulto</b></div>
+        <div><small>Resultado de lectura</small><b id="dResultado">—</b></div>
+        <div><small>Código identificado</small><b id="dCodigo" class="mono">—</b></div>
+        <div><small>Mecanismo de desvío</small><b id="dDesviador">En reposo</b></div>
+        <div><small>ID del ciclo</small><b id="dId" class="mono">—</b></div>
+        <div><small>Registro ERP</small><b id="dRegistro">—</b></div>
+        <div class="ancho"><small>Revisión manual (contenedor de No Read)</small><b id="dRev">0/8 en el contenedor · sin operario</b></div>
+      </div>
+      <div class="kpis">
+        <div><b id="kProc">0</b><small>procesados</small></div>
+        <div><b id="kOK">0</b><small>OK registrados</small></div>
+        <div><b id="kNR">0</b><small>No Read</small></div>
+        <div><b id="kAl">0</b><small>alarmas</small></div>
+        <div><b id="kTasa">—</b><small>lectura exitosa</small></div>
+        <div><b id="kCiclo">—</b><small>t. medio de ciclo</small></div>
+        <div><b id="kMan">0</b><small>leídos a mano</small></div>
+        <div><b id="kExp">0</b><small>a expedición</small></div>
+        <div><b id="kEnCurso">0</b><small>bultos en planta</small></div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-descarga" role="tabpanel" aria-labelledby="t-descarga" hidden>
+      <div class="datos4">
+        <div><small>Camión</small><b id="dCamion">—</b></div>
+        <div><small>Bultos en el camión</small><b id="dCarga">—</b></div>
+        <div class="ancho"><small>Robot AMR</small><b id="dRobot">R0 · Esperando autorización</b></div>
+        <div><small>Zona de acumulación</small><b id="dAcu">0 / 3</b></div>
+        <div><small>Vacío de los cabezales</small><b id="dVacio">Sin vacío</b></div>
+      </div>
+      <div class="io" id="ioAmr"></div>
+      <div class="fila modo-desc">
+        <label for="selModo">Modo de descarga del camión</label>
+        <select id="selModo">
+          <option value="amr">AMR de dos brazos (H3)</option>
+          <option value="manual">Operario, descarga manual asistida (H2, referencia)</option>
+        </select>
+      </div>
+      <table class="tab comp" id="tabComp" aria-label="Comparación de camiones descargados"></table>
+      <div class="kpis">
+        <div><b id="kCam">0</b><small>camiones descargados</small></div>
+        <div><b id="kDesc">0</b><small>bultos descargados</small></div>
+        <div><b id="kRob">—</b><small>t. medio por recogida</small></div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-senales" role="tabpanel" aria-labelledby="t-senales" hidden>
+      <h3>Lectores R1–R6 <small>(Zebra FS40)</small></h3>
+      <div class="lectores" id="lectores"></div>
+      <h3>Señales de campo</h3>
+      <div class="io" id="io"></div>
+    </div>
+  </aside>
+</section>
+
+<section class="bloque" id="historico">
+  <div class="tit"><h2>Histórico del proceso <button id="btnCsv" class="btn-csv">Exportar CSV</button></h2><p>Cada fila conserva fecha y hora (UTC−03:00), ID del ciclo, origen, evento y calidad del dato — sección 15.3 del TPI. Las alarmas registran activación, retorno a normal, reconocimiento y rearme por separado.</p></div>
+  <div class="tabla-scroll">
+    <table class="hist">
+      <thead><tr><th>Fecha y hora</th><th>ID del ciclo</th><th>Origen</th><th>Evento o dato</th><th>Calidad o validez</th></tr></thead>
+      <tbody id="tbHist"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ GRAFCET ============ -->
+<section class="bloque" id="grafcet">
+  <div class="tit"><h2>Secuencia mínima E0–E5 (GRAFCET)</h2><p>La etapa activa se resalta en vivo. Las transiciones son las de la sección 12.4: un bulto por ciclo, detención en la estación, retención hasta confirmar el registro, y No Read distinto de falla.</p></div>
+  <div class="grafcet-wrap">
+    <svg id="svgGrafcet" viewBox="0 0 900 520" role="img" aria-label="Diagrama de etapas E0 a E5">
+      <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <g class="tr">
+        <path d="M450,78 V128" marker-end="url(#fl)"/><text x="462" y="108">S_ING detecta · se crea el ID</text>
+        <path d="M450,182 V262" marker-end="url(#fl)"/><text x="462" y="216">código válido y coherente</text><text x="462" y="230">(lecturas repetidas consolidadas)</text>
+        <path d="M410,182 C320,200 210,215 190,262" marker-end="url(#fl)"/><text x="150" y="206" text-anchor="middle">adquisición OK sin código</text><text x="150" y="220" text-anchor="middle">(No Read)</text>
+        <path d="M490,182 C590,200 740,215 760,262" class="dash" marker-end="url(#fl)"/><text x="770" y="200" text-anchor="middle">comunicación · dato inválido</text><text x="770" y="214" text-anchor="middle">contradicción · sin detención</text>
+        <path d="M508,290 H700" class="dash" marker-end="url(#fl)"/><text x="604" y="282" text-anchor="middle">rechazo / timeout</text><text x="604" y="308" text-anchor="middle">de registro</text>
+        <path d="M450,316 V396" marker-end="url(#fl)"/><text x="462" y="354">confirmación ERP</text><text x="462" y="368">del mismo ID</text>
+        <path d="M190,316 C200,380 320,412 390,418" marker-end="url(#fl)"/><text x="206" y="372">S_PASO + S_RET</text><text x="206" y="386">confirmados</text>
+        <path d="M760,316 C760,380 620,416 510,420" class="dash" marker-end="url(#fl)"/><text x="690" y="380">rearme con registro</text><text x="690" y="394">confirmado (bulto en estación)</text>
+        <path d="M392,436 H60 V52 H390" marker-end="url(#fl)"/><text x="70" y="456">ciclo cerrado · estación libre · S_RET</text>
+        <path d="M818,290 H860 V40 H510" class="dash" marker-end="url(#fl)"/><text x="850" y="30" text-anchor="end">rearme · ciclo resuelto y documentado · estación libre</text>
+        <path d="M132,290 H96" class="dash" marker-end="url(#fl)"/><text x="80" y="294" text-anchor="middle" class="salto">E5</text><text x="104" y="338" text-anchor="middle">sin S_EXT,</text><text x="104" y="352" text-anchor="middle">S_PASO o S_RET</text>
+        <path d="M450,450 V486" class="dash" marker-end="url(#fl)"/><text x="450" y="504" text-anchor="middle" class="salto">E5</text><text x="462" y="472">sin liberar la estación</text>
+      </g>
+      <g class="et" data-paso="E0"><rect x="392" y="26" width="116" height="52" rx="4"/><rect x="398" y="32" width="104" height="40" rx="2" class="doble"/><text x="450" y="59">E0</text></g>
+      <g class="et" data-paso="E1"><rect x="392" y="130" width="116" height="52" rx="4"/><text x="450" y="163">E1</text></g>
+      <g class="et" data-paso="E2"><rect x="392" y="264" width="116" height="52" rx="4"/><text x="450" y="297">E2</text></g>
+      <g class="et" data-paso="E3"><rect x="132" y="264" width="116" height="52" rx="4"/><text x="190" y="297">E3</text></g>
+      <g class="et" data-paso="E5"><rect x="702" y="264" width="116" height="52" rx="4"/><text x="760" y="297">E5</text></g>
+      <g class="et" data-paso="E4"><rect x="392" y="398" width="116" height="52" rx="4"/><text x="450" y="431">E4</text></g>
+    </svg>
+    <ol class="etapas">
+      <li data-paso="E0"><b>E0 · Esperando bulto</b> Lectores en espera, desviador en reposo, se habilita la recepción. Al reiniciar con un bulto o transacción pendiente se exige intervención.</li>
+      <li data-paso="E1"><b>E1 · Posicionado e identificando</b> El bulto llega a S_ZONA, se inhibe el alimentador, se pide la parada, el encoder confirma detención y se disparan R1–R6.</li>
+      <li data-paso="E2"><b>E2 · Registrando</b> Lectura OK: se conserva el código con el ID, se retiene el bulto y se espera la confirmación del ERP para el mismo ID.</li>
+      <li data-paso="E3"><b>E3 · Derivando a excepción</b> No Read: evento de excepción, VUVG energizada, confirmación S_EXT, paso por S_PASO, retracción y S_RET.</li>
+      <li data-paso="E4"><b>E4 · Finalizando</b> Alimentador inhibido; si hubo registro se evacua por la línea principal; se confirma estación libre y se cierra el ciclo.</li>
+      <li data-paso="E5"><b>E5 · Falla / intervención</b> Se inhiben ingresos y avance, se conserva el contexto. Salida: causa corregida, señales coherentes, S_RET, alarma reconocida y rearme deliberado.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="bloque" id="robot">
+  <div class="tit"><h2>Secuencia del AMR (H3: descarga del camión)</h2><p>Secciones 19 y 20 del TPI. El PLC autoriza cada recogida solo si hay un camión en posición (S_CAMION), la operación está habilitada y hay capacidad en la zona de acumulación. Antes de depositar comprueba que el punto de carga esté libre (S_CARGA). Esperar por capacidad es una condición normal, no una alarma.</p></div>
+  <ol class="etapas robot">
+    <li data-rpaso="R0"><b>R0 · Esperando autorización</b> Camión en posición, automático habilitado y capacidad en la acumulación (menos de 3 bultos, contando el que lleva el robot).</li>
+    <li data-rpaso="R1"><b>R1 · Traslado al camión</b> La base se ubica frente a la columna del bulto y gira fuera del camión, en la zona AMR. El carro elevable sube o baja al nivel del bulto.</li>
+    <li data-rpaso="R2"><b>R2 · Localización con visión 3D</b> Identifica el bulto y las caras accesibles para el agarre. Retira de arriba hacia abajo y desde la puerta, para no desestabilizar la carga restante.</li>
+    <li data-rpaso="R3"><b>R3 · Aproximación y agarre</b> Entra en línea recta y los dos brazos apoyan sus cabezales multiventosa, lado a lado, sobre la cara frontal (la única accesible en la pared de carga). Activa el vacío y verifica el agarre antes de retirar; si no se verifica, reposiciona y reintenta.</li>
+    <li data-rpaso="R4"><b>R4 · Retiro y traslado</b> Sale en línea recta, recoge el bulto cerca del cuerpo, gira en zona libre y lo lleva por encima de la altura de las barandas. Si el lidar detecta una obstrucción, hay detención coordinada y se conserva la sujeción.</li>
+    <li data-rpaso="R5"><b>R5 · Depósito</b> Frente a la cinta, sin que la base la toque y con S_CARGA libre, extiende los brazos, apoya el bulto y libera las ventosas.</li>
+    <li data-rpaso="R6"><b>R6 · Retorno</b> Vuelve a la posición de espera. Cuando el camión queda vacío, se va y llega el siguiente.</li>
+  </ol>
+</section>
+
+<!-- ============ FLEXSIM ============ -->
+<section class="bloque" id="flexsim">
+  <div class="tit"><h2>Resultados de la simulación en FlexSim</h2>
+    <p>Modelo <code>flexsim/TracePack_Estacion.fsm</code>, armado y corrido desde el MCP de FlexSim. La estación tiene capacidad 1 y el alimentador admite un solo bulto: así se respeta el interbloqueo “un bulto por ciclo”. Cada escenario se corrió 3 réplicas (semillas 101, 202, 303) de un turno de 8 h.</p></div>
+  <div class="flujo-fs">
+    <span>Camion_Ingreso<small>Source · exp(IAT)</small></span><i>→</i>
+    <span>Zona_Carga<small>Queue</small></span><i>→</i>
+    <span>Carga_Manual<small>Processor · T_Carga</small></span><i>→</i>
+    <span>Alimentador<small>Queue · máx. 1</small></span><i>→</i>
+    <span class="dest">Estacion_Inspeccion<small>Processor · cap. 1 · E1–E4</small></span><i>→</i>
+    <span class="okc">Salida_Principal<small>puerto 1 · OK</small></span>
+    <span class="nrc">Revision_Manual<small>puerto 2 · No Read</small></span>
+  </div>
+  <div class="fs-grid">
+    <div class="card">
+      <h3>Escenarios (promedio de 3 réplicas · 8 h)</h3>
+      <div class="tabla-scroll"><table class="tab" id="tabEsc"></table></div>
+      <div id="barras" class="barras"></div>
+      <p id="concl" class="concl"></p>
+    </div>
+    <div class="card">
+      <h3>Corrida base de 1 h (semilla 101): cada ciclo</h3>
+      <svg id="svgTimeline" viewBox="0 0 640 230" role="img" aria-label="Línea de tiempo de ciclos"></svg>
+      <p class="leyenda"><i class="c-ok"></i>OK registrado <i class="c-nr"></i>No Read desviado <i class="c-e5"></i>OK con alarma de registro (E5 + intervención)</p>
+      <h3>Parámetros del modelo (<code>Model.parameters</code>)</h3>
+      <div class="tabla-scroll"><table class="tab" id="tabPar"></table></div>
+    </div>
+  </div>
+  <figure class="captura"><img src="assets/captura_flexsim.png" alt="Vista 3D del modelo en FlexSim" loading="lazy"><figcaption>Modelo H2 en FlexSim 2026 (captura tomada por el MCP).</figcaption></figure>
+
+  <div class="tit sub"><h2>H3 · Camión + AMR en FlexSim</h2>
+    <p>Modelo <code>flexsim/TracePack_H3_Camion_AMR.fsm</code>. Cada camión trae 36 bultos y el AMR es un <i>Transporter</i> que los lleva del camión a la zona de acumulación (máx. 3). Solo recoge cuando hay lugar, como pide la sección 20. Se compara con una referencia de descarga manual asistida (sección 21). Cada escenario: 3 réplicas de 8 h.</p></div>
+  <div class="flujo-fs">
+    <span>Camion_Llegada<small>Source · 36 bultos por camión</small></span><i>→</i>
+    <span>Camion_Caja<small>Queue · carga del camión</small></span><i>→</i>
+    <span class="amrc">AMR_Robot<small>Transporter · T_Agarre + T_Deposito</small></span><i>→</i>
+    <span>Zona_Acumulacion<small>Queue · máx. 3</small></span><i>→</i>
+    <span>Alimentador<small>Queue · máx. 1</small></span><i>→</i>
+    <span class="dest">Estacion_Inspeccion<small>Processor · cap. 1</small></span><i>→</i>
+    <span class="okc">Salida_Principal<small>OK</small></span>
+    <span class="nrc">Revision_Manual → Lectura_Manual<small>No Read · Processor + Operator</small></span><i>→</i>
+    <span>Expedicion<small>Sink común</small></span>
+  </div>
+  <div class="fs-grid">
+    <div class="card">
+      <h3>Escenarios H3 (promedio de 3 réplicas · 8 h)</h3>
+      <div class="tabla-scroll"><table class="tab" id="tabH3"></table></div>
+      <p id="conclH3" class="concl"></p>
+    </div>
+    <div class="card">
+      <h3>Tiempo de descarga por camión (min)</h3>
+      <div id="barrasH3" class="barras"></div>
+      <figure class="captura"><img src="assets/captura_flexsim_h3.png" alt="Modelo H3 en FlexSim con camión, AMR y acumulación" loading="lazy"><figcaption>Modelo H3 en FlexSim: camión, AMR (Transporter), acumulación, estación, lectura manual con operario y expedición.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARQUITECTURA ============ -->
+<section class="bloque" id="arquitectura">
+  <div class="tit"><h2>Arquitectura funcional</h2><p>Las decisiones de control físico quedan en el PLC; la HMI y el servicio de integración solo intercambian estados, solicitudes y confirmaciones (sección 15.4).</p></div>
+  <svg viewBox="0 0 900 330" class="arq" role="img" aria-label="Diagrama de arquitectura">
+    <defs><marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g class="nodo"><rect x="20" y="20" width="220" height="130" rx="8"/><text x="130" y="46" class="t">Campo · entradas</text><text x="130" y="72">S_ING · S_ZONA (24 V DC)</text><text x="130" y="92">Encoder (conteo rápido)</text><text x="130" y="112">S_EXT · S_RET · S_PASO · S_EXC</text><text x="130" y="132">R1–R6 Zebra FS40 (Ethernet)</text></g>
+    <g class="nodo plc"><rect x="340" y="40" width="220" height="90" rx="8"/><text x="450" y="70" class="t">PLC S7-1200</text><text x="450" y="92">CPU 1214C DC/DC/DC</text><text x="450" y="112">secuencia · timers · interbloqueos</text></g>
+    <g class="nodo"><rect x="660" y="20" width="220" height="130" rx="8"/><text x="770" y="46" class="t">Campo · salidas</text><text x="770" y="72">Marcha alimentador (variador)</text><text x="770" y="92">Marcha cinta de inspección</text><text x="770" y="112">VUVG 5/2 24 V → ADN-S</text><text x="770" y="132">Baliza · disparo de lectores</text></g>
+    <g class="nodo"><rect x="340" y="210" width="220" height="60" rx="8"/><text x="450" y="236" class="t">HMI local</text><text x="450" y="256">estados · alarmas · comandos</text></g>
+    <g class="nodo"><rect x="20" y="210" width="220" height="60" rx="8"/><text x="130" y="236" class="t">Servicio de integración (PC)</text><text x="130" y="256">registro por ID · histórico</text></g>
+    <g class="nodo"><rect x="660" y="210" width="220" height="60" rx="8"/><text x="770" y="236" class="t">ERP</text><text x="770" y="256">confirmación de transacción</text></g>
+    <g class="ar"><path d="M240,85 H336" marker-end="url(#fa)"/><path d="M560,85 H656" marker-end="url(#fa)"/><path d="M450,134 V206" marker-start="url(#fa)" marker-end="url(#fa)"/><path d="M400,134 C360,180 260,190 200,206" marker-start="url(#fa)" marker-end="url(#fa)"/><path d="M240,250 C400,310 560,310 656,250" marker-start="url(#fa)" marker-end="url(#fa)"/></g>
+  </svg>
+</section>
+
+<!-- ============ PLC ============ -->
+<section class="bloque" id="plc">
+  <div class="tit"><h2>Programa del PLC (S7-1200, SCL)</h2>
+    <p>La secuencia E0–E5 y la autorización del AMR en texto estructurado IEC 61131-3, listas para importar en TIA Portal como fuente externa (<code>plc/TracePack_PLC.scl</code>). Es la misma lógica que corre en la simulación. Los tiempos máximos son los supuestos a validar en la puesta en marcha.</p></div>
+  <div class="fs-grid">
+    <div class="card">
+      <h3>Entradas y salidas (CPU 1214C DC/DC/DC)</h3>
+      <div class="tabla-scroll"><table class="tab" id="tabIO"></table></div>
+    </div>
+    <div class="card">
+      <h3>FB_Estacion y FB_AutorizacionAMR <a class="descarga" href="data/TracePack_PLC.scl" download>Descargar .scl</a></h3>
+      <pre class="codigo" id="codPLC">Cargando…</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLENDER ============ -->
+<section class="bloque" id="blender">
+  <div class="tit"><h2>Modelo 3D en Blender</h2><p><code>blender/TracePack_Estacion.blend</code> se genera con <code>crear_escena_tracepack.py</code> y se anima con <code>animar_ciclos.py</code> (un ciclo OK y uno No Read, 384 cuadros). Para H3, <code>crear_descarga_amr.py</code> agrega el muelle, el camión, la cinta de acumulación y el AMR, y <code>animar_descarga_amr.py</code> anima la llegada del camión y una recogida completa. La vista 3D de esta página usa el mismo modelo exportado a glTF.</p></div>
+  <div class="galeria">
+    <figure><img src="assets/renders/01_lectura_multidireccional.png" alt="Lectura multidireccional con los seis campos de visión" loading="lazy"><figcaption>E1 · Lectura multidireccional: campos de visión 46°×29° de R1–R6.</figcaption></figure>
+    <figure><img src="assets/renders/02_salida_principal_OK.png" alt="Bulto registrado saliendo por la línea principal" loading="lazy"><figcaption>E4 · Registro confirmado: evacuación por la línea principal.</figcaption></figure>
+    <figure><img src="assets/renders/03_desvio_no_read.png" alt="Cilindro empujando un bulto No Read" loading="lazy"><figcaption>E3 · No Read: el cilindro empuja el bulto al carril de excepción.</figcaption></figure>
+    <figure><img src="assets/renders/04_carril_excepcion.png" alt="Bulto en el carril hacia revisión manual" loading="lazy"><figcaption>E3 · Paso por S_PASO hacia la zona de revisión manual.</figcaption></figure>
+    <figure><img src="assets/renders/05_AMR_agarre_en_camion.png" alt="AMR sujetando un bulto dentro del camión con sus dos cabezales" loading="lazy"><figcaption>H3 · El AMR sujeta un bulto del camión con los dos cabezales multiventosa.</figcaption></figure>
+    <figure><img src="assets/renders/06_AMR_deposito_acumulacion.png" alt="AMR apoyando el bulto en la cinta de acumulación" loading="lazy"><figcaption>H3 · Depósito en el punto de carga de la acumulación (S_CARGA).</figcaption></figure>
+    <figure><img src="assets/renders/07_revision_manual_y_expedicion.png" alt="Operario en la zona de revisión manual junto a la cinta de retorno" loading="lazy"><figcaption>Revisión manual: el operario lee los No Read con un lector de mano y los envía por la cinta de retorno al colector de expedición.</figcaption></figure>
+    <figure><img src="assets/renders/08_planta_completa.png" alt="Vista general de la planta: muelle, AMR, cintas, estación y expedición" loading="lazy"><figcaption>Planta completa: muelle con el camión, AMR, acumulación, estación de lectura, revisión manual y expedición.</figcaption></figure>
+  </div>
+</section>
+</main>
+
+<footer>TracePack PLC · Díaz Aimar, Mecchia, Micheloud, Sereno · Prof. Oberto · Los tiempos y porcentajes son valores ilustrativos a validar (sección 15.5).</footer>
+
+<script>
+  // los modulos ES y el .glb no cargan desde file://: hace falta un servidor local
+  if (location.protocol === 'file:') document.getElementById('aviso').textContent = 'Abrí la web con web/iniciar_web.bat (levanta un servidor local en http://localhost:8000). Desde file:// el navegador bloquea el modelo 3D.';
+</script>
+<script src="data/flexsim_resultados.js"></script>
+<script type="module" src="js/resultados.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

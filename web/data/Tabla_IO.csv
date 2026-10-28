@@ -1,0 +1,28 @@
+Tag;Tipo;Direccion;Origen o destino;Descripcion
+ENC_A;Bool;%I0.0;Encoder rotativo (canal A);Contador rapido HSC1: velocidad y detencion de la cinta de inspeccion
+ENC_B;Bool;%I0.1;Encoder rotativo (canal B);Contador rapido HSC1: sentido de giro
+S_ING;Bool;%I0.2;Fotoelectrico 24 V DC;Ingreso de bulto al alimentador: crea el ID del ciclo
+S_ZONA;Bool;%I0.3;Fotoelectrico difuso 24 V DC;Presencia del bulto en la estacion de lectura y desvio
+S_EXT;Bool;%I0.4;Fin de carrera del cilindro ADN-S;Cilindro extendido
+S_RET;Bool;%I0.5;Fin de carrera del cilindro ADN-S;Cilindro en reposo (condicion de rearme)
+S_PASO;Bool;%I0.6;Fotoelectrico 24 V DC;Paso del bulto por el carril de excepcion
+S_EXC;Bool;%I0.7;Fotoelectrico 24 V DC;Zona de excepcion (revision manual) ocupada
+S_CAMION;Bool;%I1.0;Sensor del muelle;Camion en posicion de descarga
+S_CARGA;Bool;%I1.1;Fotoelectrico 24 V DC;Punto de carga de la acumulacion ocupado
+S_ACU;Bool;%I1.2;Fotoelectrico 24 V DC;Acumulacion completa (tercera posicion)
+PRESOSTATO;Bool;%I1.3;Presostato de linea neumatica;Presion de aire disponible para el desviador
+PARADA_EMERG;Bool;%I1.4;Pulsador de emergencia (contacto NC);Cadena de seguridad: corta todos los accionamientos
+AMR_SEGURIDAD;Bool;%I1.5;Controlador del AMR (salida segura);Obstruccion / parada protectiva del AMR
+M_ALIM;Bool;%Q0.0;Variador del alimentador;Marcha del alimentador
+M_INSP;Bool;%Q0.1;Variador de la cinta de inspeccion;Marcha de la cinta transparente
+M_ACU;Bool;%Q0.2;Variador de la acumulacion;Liberacion de un bulto hacia el alimentador
+Y_VUVG;Bool;%Q0.3;Electrovalvula Festo VUVG 5/2 24 V DC;Extension del cilindro (sin senal: retorno)
+TRIG_LECT;Bool;%Q0.4;Entrada de disparo de R1-R6;Inicio de la adquisicion (tambien por PROFINET)
+BALIZA_VERDE;Bool;%Q0.5;Torre de senalizacion;Automatico sin alarmas
+BALIZA_AMBAR;Bool;%Q0.6;Torre de senalizacion;Excepcion en curso o sistema detenido
+BALIZA_ROJA;Bool;%Q0.7;Torre de senalizacion;Alarma activa (intermitente)
+AMR_HABILITADO;Bool;%Q1.0;Controlador del AMR;Autorizacion de recogida (FB_AutorizacionAMR)
+AMR_DEPOSITO_OK;Bool;%Q1.1;Controlador del AMR;Punto de carga libre: puede depositar
+LECTORES_R1_R6;Struct;PROFINET;Zebra FS40 x6;Codigo, resultado y diagnostico por lector (consolidados en AdqFin / AdqCodigoValido / AdqSinCodigo / AdqError)
+ERP_INTERCAMBIO;DB;DB10;Servicio de integracion en PC;Solicitud de registro por ID de ciclo, confirmacion, rechazo y disponibilidad
+HMI_COMANDOS;DB;DB20;HMI local;Iniciar, detener, reconocer y rearmar (solicitudes que el PLC acepta o rechaza)

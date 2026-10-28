@@ -1,0 +1,50 @@
+{
+ "scenarios": [
+  {
+   "name": "Base",
+   "params": {
+    "IAT_Llegada": 25,
+    "Pct_LecturaOK": 92
+   }
+  },
+  {
+   "name": "Lectura_degradada",
+   "params": {
+    "IAT_Llegada": 25,
+    "Pct_LecturaOK": 80
+   }
+  },
+  {
+   "name": "Alta_demanda",
+   "params": {
+    "IAT_Llegada": 14,
+    "Pct_LecturaOK": 92
+   }
+  },
+  {
+   "name": "Pico_saturacion",
+   "params": {
+    "IAT_Llegada": 10,
+    "Pct_LecturaOK": 92
+   }
+  }
+ ],
+ "seeds": [
+  101,
+  202,
+  303
+ ],
+ "run_to_time": 28800.0,
+ "run_speed": 5000.0,
+ "metrics": [
+  "input.value",
+  "output.value",
+  "content.average",
+  "content.maximum",
+  "staytime.average"
+ ],
+ "rows": 12,
+ "failed": 0,
+ "backend": "gui_window",
+ "created": "2026-10-28T02:50:16.087919+00:00"
+}
