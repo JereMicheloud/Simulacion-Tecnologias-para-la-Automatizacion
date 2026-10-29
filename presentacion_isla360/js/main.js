@@ -17,15 +17,18 @@ import * as THREE from 'three';
 import { CFG } from './config.js';
 import {
   S, G, CALL, V, LX, X_SPAWN, X_TRIG, X_ISLA,
-  initEscena, resize, render, pasoZoom, tickCielo, mostrarLlamadas, llamada, texturaBanda,
+  initEscena, resize, render, pasoZoom, tickCielo, mostrarLlamadas, llamada, texturaBanda, texturaPiso,
   ACENTOS, LUCES_ROJAS,
 } from './escena.js';
 import { scene, camera, renderer, controls, composer } from './escena.js';
 import { crearIsla, animarIsla } from './isla.js';
 import {
-  initCajas, crearTexturasEtiqueta as crearTexCajas, spawn, moverCaja, reasignar,
-  adelantarCaja, palletStep, quitarCaja, REV as CREV, revisionAbrir as cajasRevisionAbrir,
+  initCajas, crearTexturasEtiqueta as crearTexCajas, crearCaja, crearPallet, proximoTipo, cambiarTipo, moverCaja, reasignar,
+  adelantarCaja, quitarCaja, REV as CREV, revisionAbrir as cajasRevisionAbrir, LX as LX_CAJA, H as H_CAJA, BELT as BELT_CAJA,
 } from './cajas.js';
+import { initDescarga, tickDescarga } from './descarga.js';
+import { initAlmacen, tickAlmacen } from './almacen.js';
+import { crearEntorno } from './entorno.js';
 import {
   montarPantalla, enlazar as enlazarPantallas, HUD, hudIniciar, hudVeredicto, hudActualizar,
   REV as PREV, revisionAbrir as pantRevisionAbrir, revisionActualizar, revisionCerrar as pantRevisionCerrar,
@@ -33,7 +36,7 @@ import {
 } from './pantallas.js';
 import { pintarMonitor, MON, monitorControl, monitoresStep } from './monitores.js';
 import { initHMI, actualizarHMI, log, setAlarma } from './hmi.js';
-import { initGrafcet, pintarGrafcet } from './grafcet.js';
+import { initGrafcet, pintarGrafcet, tourGrafcet, salirTour } from './grafcet.js';
 import { initEscenarios, ocurre, CASOS } from './escenarios.js';
 import { PASOS, CAMS, initRelato, irPaso, siguiente, anterior, ponerPlay, estadoRelato } from './relato.js';
 
@@ -90,6 +93,10 @@ fetch('assets/casos.json')
       scene, cfg: { camionBaseX: -9.6 },
       callbacks: { onFoto, onIsla, onVeredicto, onRetencion, onRevisionAbrir, onRevisionCerrar, onCamionVacio, onPalletListo },
     });
+    initDescarga({ G, S, crearCaja, quitarCaja, tipo: () => proximoTipo(S), log,
+      alSoltar: (b) => { if (CASOS.etiquetas && b.tipo === 'ok' && Math.random() < 0.4) cambiarTipo(b, Math.random() < 0.5 ? 'tapada' : 'rayada'); }, BELT: BELT_CAJA, H: H_CAJA, LX: LX_CAJA });
+    initAlmacen({ scene, S, G, crearPallet, quitarCaja, PAL_X: 6.0, log });
+    crearEntorno({ scene, G, texturaPiso });
     initHMI(S, {});
     initGrafcet(null, null);
     initEscenarios({ S, P: { pctOK: 92 }, log });
@@ -127,7 +134,7 @@ function onFoto(b, i) {
 function onIsla(b) {
   log('Isla 360°', 'Bulto ' + (b.tipo || '') + ' en el plato: giro 360° y disparo C1·C2·C3.', 'Ciclo en curso.');
   if (S.platoOK === false || ocurre('plato')) return retenerE5(b, 'Plato descentrado', 'El plato vibra y no confirma la detención: recentrarlo en planta y rearmar.');
-  if (ocurre('lectura')) return retenerE5(b, 'Lectura inválida', 'C1 y C2 se contradicen (o se perdió comunicación): no es NO OK, es falla a E5.');
+  if (ocurre('lectura')) return retenerE5(b, 'Lectura inválida', 'Dos cámaras entregan códigos distintos (o se perdió la comunicación): no es No Read, es falla y va a E5.');
 }
 function onVeredicto(b) {
   S.ver = { ok: !b.malo, t: S.t };
@@ -135,16 +142,16 @@ function onVeredicto(b) {
   S.kpi.proc++; if (b.malo) S.kpi.nr++; else S.kpi.ok++;
   S.kpi.tiempos.push(3.2);
   const c = datos[b.tipo];
-  log('Isla 360°', 'Bulto ' + (c?.datos?.caja ?? '') + ': ' + (b.malo ? 'NO OK — ' + (c?.motivo ?? 'defecto') : 'OK, sigue a pallet.'), b.malo ? 'No Read.' : 'Lectura OK.');
+  log('Isla 360°', b.malo ? 'No Read: ninguna cámara obtuvo un código válido. Se desvía a revisión manual.' : `Código ${c?.codigo?.leido ?? ''} leído por C${(b.cara ?? 0) + 1}: se pide el registro al ERP con el ID del ciclo.`, b.malo ? 'No Read.' : 'Lectura OK.');
   if (!b.malo && ocurre('erp')) {
     b.holdE5 = true;
-    setAlarma('erp', 'ERP sin respuesta', 'No llegó la confirmación del registro para este ID: el caja queda retenido. Se consulta por ID (sin duplicar) y se rearma.');
+    setAlarma('erp', 'ERP sin respuesta', 'No llegó la confirmación del registro para este ID: el bulto queda retenido. Se consulta por ID (sin duplicar) y se rearma.');
     S.paso = 'E5'; S.fase = 'falla ERP';
     return;
   }
   if (b.malo && ocurre('aire')) {
     b.holdE5 = true;
-    setAlarma('aire', 'Falta de aire comprimido', 'El desviador no confirma S_EXT: el caja queda retenido. Se purga la línea y se rearma.');
+    setAlarma('aire', 'Falta de aire comprimido', 'El desviador no confirma S_EXT: el bulto queda retenido. Se purga la línea y se rearma.');
     S.paso = 'E5'; S.fase = 'falla aire';
   }
 }
@@ -161,7 +168,7 @@ function onRevisionCerrar(b, dec) {
   const m = pasoActual?.monitor;
   if (m && datos[m]) pintarMonitor(M2, 'etiqueta', datos[m], m, { botones: true });
   else pintarMonitor(M2, 'espera', null, null);
-  log('Cinta de desvío', dec === 'bien' ? 'Lectura correcta: el defecto es real, se corrige la etiqueta y el caja vuelve a la isla.' : 'Lectura incorrecta: se repite la lectura en la isla.', 'Revisión manual.');
+  log('Revisión manual', dec === 'bien' ? 'Código leído con el lector de mano y registrado: el bulto sigue por la cinta de retorno a expedición.' : 'Etiqueta ilegible: se imprime una nueva, se registra y el bulto sigue por la cinta de retorno a expedición.', 'Registro manual.');
 }
 function onCamionVacio() {
   const min = (S.t - S.tCamion) / 60;
@@ -170,7 +177,7 @@ function onCamionVacio() {
   log('Descarga', 'Camión ' + S.camiones + ' vaciado (' + min.toFixed(1) + ' min): llega otro con 72 cajas.', 'Ciclo de descarga.');
 }
 function onPalletListo(p) {
-  log('Expedición', 'Pallet completo (12 cajas): se envuelve y va a expedición.', 'Pallet armado.');
+  log('Expedición', 'Pallet completo (12 bultos identificados): se envuelve y el autoelevador lo lleva al almacén.', 'Pallet armado.');
 }
 function retenerE5(b, tipo, causa) {
   b.retenida = true;
@@ -200,29 +207,31 @@ function aplicarPaso(p, i) {
   if (!estadoRelato().libre && p.cam?.[0]) irCamara(p.cam[0][1]);
 }
 
-// Detalle campo por campo (usa erroresDe/motivoHTML de pantallas.js).
+// Detalle de una lectura: la etiqueta con el recuadro del código y la ficha (OK / No Read).
 function renderDetalle(k) {
   const el = $('detalle');
   if (!el) return;
   el.classList.toggle('oculto', !k);
   if (!k || !datos[k]) return;
   document.querySelectorAll('#d-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.c === k));
-  const c = datos[k];
+  const c = datos[k], ok = c.veredicto === 'OK', pct = (x) => Math.round(100 * x);
   const img = $('d-img'); if (img) img.src = `assets/caso_${k}_alineada.jpg`;
+  const [x, y, w, h] = c.codigo.caja, pad = 1.2;
+  const mk = $('d-marcas'); if (mk) mk.innerHTML = `<div class="err ${ok ? 'campo hecho bien' : ''}" style="left:${100 * (x - pad) / 150}%;top:${100 * (y - pad) / 110.49}%;width:${100 * (w + 2 * pad) / 150}%;height:${100 * (h + 2 * pad) / 110.49}%">${ok ? '' : '<i>!</i>'}</div>`;
   const m = $('d-motivo');
-  if (m) { m.className = c.veredicto === 'OK' ? 'ok' : 'mal'; m.innerHTML = motivoHTML(c); }
-  const okC = c.campos.filter((x) => x.estado === 'OK').length;
-  const pct = (x) => Math.round(100 * x);
+  if (m) { m.className = ok ? 'ok' : 'mal'; m.innerHTML = motivoHTML(c); }
   const dr = $('d-res');
-  if (dr) dr.innerHTML = `<span>Precisión <b>${pct(c.confianza)} %</b></span><span>Campos <b>${okC} / ${c.campos.length}</b></span><span>Defectos <b>${c.defectos.length}</b></span><span>Formas <b>${c.formas.filter((f) => f.estado === 'OK').length} / ${c.formas.length}</b></span>`;
-  const orden = { FALTA: 0, REVISAR: 1, OK: 2 };
-  const filas = c.campos.map((x, i) => [x, i]).sort((a, b) => (orden[a[0].estado] - orden[b[0].estado]) || (a[1] - b[1])).slice(0, 14);
+  if (dr) dr.innerHTML = `<span>Resultado <b>${ok ? 'OK' : 'No Read'}</b></span><span>Certeza <b>${pct(c.confianza)} %</b></span><span>Lectura <b>${c.segundos.toFixed(2)} s</b></span>`;
+  const filas = [
+    ['Variable', 'Resultado de lectura (OK / No Read)', true],
+    ['Código', ok ? `${c.codigo.leido} · ${c.codigo.simbologia}` : 'sin código válido', ok],
+    ['Cámaras', ok ? 'una de las 3 lo decodificó' : 'las 3 terminaron bien, ninguna lo decodificó', ok],
+    ['Etapa siguiente', ok ? 'E2 · registro en el ERP con el ID del ciclo' : 'E3 · desvío a revisión manual', ok],
+    ['Revisión manual', ok ? 'no hace falta' : k === 'tapada' ? 'se despega el pliegue y se lee con el lector de mano' : 'se imprime una etiqueta nueva', ok],
+    ['Evidencia', 'se guardan las 3 fotos con el ID del ciclo', true],
+  ];
   const dl = $('d-campos');
-  if (dl) dl.innerHTML = filas.map(([x]) => {
-    const p = pct(x.certeza ?? 0);
-    const leido = x.estado === 'OK' ? 'coincide' : x.visto ? '«' + esc(String(x.visto).slice(0, 40)) + '»' : 'no se lee';
-    return `<li class="${x.estado}"><span class="pt"></span><span class="tx"><span>${esc(x.campo || 'Texto fijo')}</span><small>ERP: <em>${esc(String(x.esperado).slice(0, 44))}</em><br>Leído: <span class="${x.estado === 'OK' ? '' : 'no'}">${leido}</span></small></span><span class="pc"><b>${p}%</b><i><s style="width:${p}%"></s></i></span></li>`;
-  }).join('');
+  if (dl) dl.innerHTML = filas.map(([t, v, bien]) => `<li class="${bien ? 'OK' : 'FALTA'}"><span class="pt"></span><span class="tx"><span>${esc(t)}</span><small>${esc(v)}</small></span><span class="pc"></span></li>`).join('');
 }
 $('d-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) renderDetalle(b.dataset.c); });
 
@@ -285,7 +294,7 @@ function estadoProceso() {
     const sub = 'giro ' + Math.round(Math.min(1, giro.t / 3.2) * 360) + '° · C' + (giro.disparos.filter(Boolean).length + 1);
     return sub;
   }
-  if (HUD.b && (HUD.fase === 'analisis' || HUD.fase === 'splash')) { S.paso = 'E2'; S.fase = 'analizando'; return 'fusión C1+C2+C3'; }
+  if (HUD.b && (HUD.fase === 'analisis' || HUD.fase === 'splash')) { S.paso = 'E2'; S.fase = 'analizando'; return 'lectura C1 · C2 · C3'; }
   if (S.cajas.some((b) => FASES_DESVIO.includes(b.fase))) { S.paso = 'E3'; S.fase = 'desviando'; return 'S_EXT → S_PASO → S_RET'; }
   if (S.cajas.some((b) => b.fase === 'palet')) { S.paso = 'E4'; S.fase = 'a pallet'; return 'evacuando OK'; }
   S.paso = 'E0'; S.fase = 'espera'; return '';
@@ -297,19 +306,7 @@ function avanzar(dt) {
   let rest = dt;
   while (rest > 0) {
     const h = Math.min(rest, 0.02); rest -= h; S.t += h;
-    S.proxSpawn -= h;
-    if (S.proxSpawn <= 0) {
-      if (ocurre('cruzada')) { S.proxSpawn = 1.5; log('Alimentación', 'Bulto cruzado en la entrada: se endereza en planta y se retoma el ciclo con el mismo ID.', 'Atípico.'); }
-      else if (S.cajas.some((c) => c.fase === 'cinta' && c.x < X_SPAWN + 1.9)) S.proxSpawn = 0.25;
-      else if (S.auto && !S.alarma) {
-        const b = spawn();
-        if (CASOS.etiquetas && b && Math.random() < 0.4 && b.tipo === 'ok') {
-          b.tipo = 'linea'; b.malo = true; // etiqueta dañada permanente: cae la lectura OK
-          log('Escenario', 'Etiqueta dañada: la lectura exitosa cae y hay más NO OK a revisión.', 'Atípico.');
-        }
-        S.proxSpawn = 4.0;
-      } else S.proxSpawn = 0.5;
-    }
+    tickDescarga(h);                                                   // camión + AMR: el PLC autoriza cada recogida (acumulación < 3)
     for (const b of S.cajas.slice()) {
       const prev = b.fase;
       if (b.holdE5) { b.g.position.set(b.x, b.y, b.z); continue; } // retenida por E5: contexto conservado
@@ -320,7 +317,7 @@ function avanzar(dt) {
         S.paso = 'E5'; S.fase = 'falla desvío';
       }
     }
-    palletStep(h);
+    tickAlmacen(h);                                                    // pallet completo → autoelevador → rack
     if (S.pushRet) { S.pushK = Math.max(0, S.pushK - h / 0.7); if (S.pushK <= 0) S.pushRet = false; }
     if (S.avisoT > 0) S.avisoT -= h;
     S.flash = Math.max(0, S.flash - h * 5);
@@ -341,7 +338,9 @@ function avanzar(dt) {
   const sub = estadoProceso();
   animar(dt); animarIsla(S, G, dt); pasoZoom(dt); tickCielo(S.t);
   tourPaso(dt); latirResaltado();
-  actualizarHMI(); pintarGrafcet(S.paso, sub);
+  actualizarHMI();
+  if (pasoActual?.grafcetTour && !estadoRelato().libre) pintarGrafcet(tourGrafcet(tRelato, dt), '');   // E0–E5 en pantalla completa, etapa por etapa
+  else { salirTour(); pintarGrafcet(S.paso, sub); }
   if (tween) {
     tween.k = Math.min(1, tween.k + dt / tween.dur); const e = suave(tween.k);
     camera.position.lerpVectors(tween.p0, tween.p1, e);
@@ -397,19 +396,6 @@ function animar(dt) {
     if (G.opBrazos?.[0]) G.opBrazos[0].rotation.z = lerp(0, 0.2, suave(k));
   }
   for (const q of [S.pal, S.viaje]) if (q) { q.g.position.set(q.x, q.y, q.z); q.film.visible = q.estado === 'completo' || q.estado === 'viaje'; }
-  const pal = S.pal, pv = S.viaje;
-  const llevado = pal?.estado === 'completo' ? pal : (pv?.estado === 'viaje' ? pv : null);
-  if (G.jack) G.jack.visible = !!llevado;
-  if (G.mango) G.mango.visible = !!llevado;
-  const o = S.opPal;
-  if (o && G.opPal) {
-    G.opPal.position.set(o.x, o.marcha ? Math.abs(Math.sin(S.t * 6)) * 0.025 : 0, o.z);
-    G.opPal.rotation.y = o.yaw;
-  }
-  if (llevado && G.jack && G.mango && o) {
-    G.jack.position.set(llevado.x, llevado.y, llevado.z);
-    unir(G.mango, new THREE.Vector3(llevado.x - 0.68, 0.2, llevado.z), new THREE.Vector3(o.x + 0.3, 0.95, o.z - 0.1));
-  }
   const tt = S.t, onda = 0.5 + 0.5 * Math.sin(tt * 1.6);
   ACENTOS.forEach((m, i) => { m.emissiveIntensity = 0.06 + 0.2 * (0.5 + 0.5 * Math.sin(tt * 1.6 + i * 0.7)); });
   LUCES_ROJAS.forEach((l) => { const k = l.userData.k; l.position.set(2 + 9 * Math.sin(tt * 0.28 + k * 3.1), 2.6, k ? -2.6 : 3.0); l.intensity = 4 + 3 * Math.sin(tt * 0.9 + k); });

@@ -26,7 +26,7 @@
 <div id="contadores" class="oculto" aria-live="polite">
   <div><small>Controladas</small><b id="c-total">0</b></div>
   <div class="ok"><small>OK</small><b id="c-ok">0</b></div>
-  <div class="mal"><small>NO OK desviados</small><b id="c-mal">0</b></div>
+  <div class="mal"><small>No Read desviados</small><b id="c-mal">0</b></div>
   <div class="pal"><small>Pallets a expedición</small><b id="c-pal">0</b></div>
 </div>
 
@@ -136,8 +136,8 @@
 <section id="detalle" class="oculto" aria-label="Detalle del resultado">
   <div class="d-tabs" id="d-tabs">
     <button data-c="ok" class="on">Bulto OK</button>
-    <button data-c="dato">Dato distinto (CP)</button>
-    <button data-c="linea">Línea blanca</button>
+    <button data-c="tapada">No Read · etiqueta tapada</button>
+    <button data-c="rayada">No Read · código rayado</button>
   </div>
   <div class="d-cuerpo">
     <div class="d-foto"><div class="marco-etq"><img id="d-img" alt="Etiqueta con las marcas"><div id="d-marcas" class="p-marcas"></div></div><div id="d-motivo"></div></div>
@@ -177,7 +177,7 @@
       <li data-paso="E0"><b>E0 · Esperando bulto</b> Camión en posición, cinta habilitada, isla libre y desviador en reposo. Fijate en el HMI: modo, camión y acumulación.</li>
       <li data-paso="E1"><b>E1 · Cinta e isla 360°</b> El bulto entra a la isla, el plato la hace girar 360° y disparan las 3 cámaras (superior, inferior y lateral) con su propia luz.</li>
       <li data-paso="E2"><b>E2 · Registrando</b> Lectura OK: se guarda el código con el ID del bulto, se retiene en la isla y se espera la confirmación del ERP para ese mismo ID.</li>
-      <li data-paso="E3"><b>E3 · Desvío a revisión</b> No Read o dato distinto: se desvía a la cinta de revisión, pasa por S_PASO y el operario la verifica a mano.</li>
+      <li data-paso="E3"><b>E3 · Desvío a revisión</b> No Read: se desvía a la cinta de revisión, pasa por S_PASO y el operario la verifica a mano.</li>
       <li data-paso="E4"><b>E4 · Pallet y expedición</b> Con el registro confirmado, el bulto OK sale al pallet y suma a expedición. Se confirma isla libre y se cierra el ciclo.</li>
       <li data-paso="E5"><b>E5 · Falla / intervención</b> Se frenan ingresos y avance, se guarda el contexto. Salí con causa corregida, señales coherentes, alarma reconocida y rearme.</li>
     </ol>
@@ -196,26 +196,20 @@
   </div>
 </section>
 
-<!-- comparación: estación H2 (6 lectores) vs isla 360° (3 cámaras) -->
-<section id="costos" class="oculto" aria-label="Comparación entre la estación de 6 lectores y la isla 360°">
-  <table class="cmp">
-    <thead>
-      <tr><td></td>
-        <th scope="col" class="cmp-col h2"><small>TracePack · hito H2</small><b>Estación de 6 lectores</b><span>Lee el código del bulto y decide registro o desvío</span></th>
-        <th scope="col" class="cmp-col isla"><small>Propuesta</small><b>Isla 360° · 3 cámaras</b><span>Además de leer, controla que la etiqueta esté bien</span></th></tr>
-    </thead>
-    <tbody>
-      <tr><th scope="row">Qué lee</th><td>El código de barras</td><td>El código, el texto campo por campo y la calidad de impresión</td></tr>
-      <tr><th scope="row">Caras del bulto</th><td>Las que miran a los 6 lectores fijos</td><td>Las 6: arriba (C1), abajo a través del vidrio (C2) y los 4 costados al girar (C3)</td></tr>
-      <tr><th scope="row">Etiqueta mal impresa</th><td>Si el código igual escanea, pasa</td><td>Se ve: línea blanca del cabezal, tinta corrida, recuadro cortado</td></tr>
-      <tr><th scope="row">Dato que no coincide con el ERP</th><td>No lo detecta</td><td>Lo marca: «dice X2440, debería decir X2400»</td></tr>
-      <tr><th scope="row">Evidencia</th><td>Un código leído</td><td>La foto de cada cara, guardada con el número de envío</td></tr>
-      <tr><th scope="row">Luz</th><td>La del galpón</td><td>Una luz propia por cámara, con destello: foto nítida aunque el plato gire</td></tr>
-      <tr><th scope="row">Ritmo</th><td>Un bulto por ciclo</td><td>Un bulto por vuelta del plato (≈ 3,2 s): ~18 por minuto</td></tr>
-      <tr><th scope="row">Lo que sigue igual</th><td>Secuencia E0–E5, desvío y revisión manual</td><td>La misma secuencia E0–E5, el mismo desvío y la misma revisión manual</td></tr>
-    </tbody>
-  </table>
-  <p class="c-pie">Comparación cualitativa. El ritmo y los tiempos son supuestos de la simulación, a validar con la línea real, igual que en el TPI (secciones 15.5 y 21).</p>
+<!-- ventajas de la isla 360° -->
+<section id="costos" class="oculto" aria-label="Ventajas de la isla de inspección 360°">
+  <div class="vent-cab"><small>Isla de inspección 360°</small><h2>Ventajas</h2></div>
+  <div class="vent-grid">
+    <article class="vent"><b>360°</b><h3>Lee en cualquier cara</h3><p>El bulto llega como lo cargaron: arriba, abajo o en un costado, el código se encuentra en una sola vuelta del plato.</p></article>
+    <article class="vent"><b>C2</b><h3>Ve la cara de abajo</h3><p>La cámara inferior lee a través del vidrio: no hay que dar vuelta el bulto ni reacomodarlo a mano.</p></article>
+    <article class="vent"><b>3 luces</b><h3>Foto nítida siempre</h3><p>Cada cámara tiene su propia luz de destello y la celda cerrada mantiene la luz pareja: el giro no mueve la foto.</p></article>
+    <article class="vent"><b>3,2 s</b><h3>No frena la línea</h3><p>Una vuelta por bulto; el PLC sigue la misma secuencia E0–E5 y el AMR solo entrega cuando hay lugar.</p></article>
+    <article class="vent"><b>ID</b><h3>Trazabilidad completa</h3><p>Cada ingreso tiene su ID de ciclo: se guardan las 3 fotos, el código leído y el resultado, aunque sea No Read.</p></article>
+    <article class="vent"><b>E5</b><h3>Falla ≠ No Read</h3><p>Un No Read se desvía a revisión; una falla de comunicación o un código contradictorio va a E5 y no se confunde.</p></article>
+    <article class="vent"><b>1 celda</b><h3>Compacta y mantenible</h3><p>Perfiles de aluminio, paneles desmontables, cámaras y luces accesibles; una PC industrial colgada de la misma celda.</p></article>
+    <article class="vent"><b>ERP</b><h3>Registro sin intervención</h3><p>El bulto leído se registra solo con el ID del ciclo; el operario solo atiende los No Read.</p></article>
+  </div>
+  <p class="c-pie">Los tiempos son supuestos de la simulación, a validar con la línea real (secciones 15.5 y 21 del TPI).</p>
 </section>
 
 <!-- ficha del equipo que se toca (o que el recorrido va señalando) -->
@@ -231,7 +225,7 @@
     <button id="btnCasosCerrar" type="button" aria-label="Cerrar escenarios">Cerrar ✕</button>
   </div>
   <div class="casos-oper">
-    <label class="sw-fila"><span class="sw"><input type="checkbox" role="switch" id="chkOperario"><span></span></span> <span><b>Operario de revisión en planta</b><small>Apagado: los NO OK se juntan en la cinta de desvío. Prendido: viene un operario y los revisa uno por uno.</small></span></label>
+    <label class="sw-fila"><span class="sw"><input type="checkbox" role="switch" id="chkOperario"><span></span></span> <span><b>Operario de revisión en planta</b><small>Apagado: los bultos No Read se juntan en la cinta de desvío. Prendido: viene un operario y los revisa uno por uno.</small></span></label>
     <label class="sw-fila"><span class="sw"><input type="checkbox" role="switch" id="chkRobot" checked><span></span></span> <span><b>Descarga habilitada</b><small>Apagada: se termina la descarga en curso y se espera.</small></span></label>
     <label class="rng"><span><b>Lectura OK: <span id="lblOK">92</span> %</b><small> sin casos atípicos</small></span><input type="range" id="rngOK" min="50" max="100" value="92"></label>
   </div>
@@ -261,6 +255,9 @@
       <button data-cam="desvio" type="button">Desviador</button>
       <button data-cam="revision" type="button">Revisión</button>
       <button data-cam="pallet" type="button">Pallet</button>
+      <button data-cam="amr" type="button">AMR</button>
+      <button data-cam="almacen" type="button">Almacén</button>
+      <button data-cam="muelles" type="button">Muelles</button>
     </div>
     <div class="grupo"><span>Velocidad</span>
       <button data-vel="0.5" type="button">½×</button>

@@ -33,10 +33,10 @@ export const X_EXP = 8.1;                     // expedición (destino del pallet
 export const OP_PAL_X = 5.05;
 export const CAJAS_PALLET = 12;
 export const T_GIRO = 3.2;                    // el plato gira 360° en 3,2 s; C1/C2/C3 disparan a 0°/120°/240°
-export const PATRON = ['ok', 'ok', 'linea', 'ok', 'ok', 'dato', 'ok', 'ok'];
+export const PATRON = ['ok', 'ok', 'rayada', 'ok', 'ok', 'tapada', 'ok', 'ok'];
 
 // Fases que recorre un bulto (para el GRAFCET/HMI de main.js).
-export const FASES = ['camion', 'cinta', 'giro', 'empuje', 'desliza', 'cae', 'desvio', 'espera', 'revisa', 'salida', 'conector', 'palet', 'apilada'];
+export const FASES = ['enCamion', 'amr', 'camion', 'cinta', 'giro', 'empuje', 'desliza', 'cae', 'desvio', 'espera', 'revisa', 'salida', 'conector', 'palet', 'apilada'];
 
 // ------------------------------------------------------------------ estado inyectado + callbacks
 let S = null;                 // estado compartido (lo crea main.js / escena.js)
@@ -73,7 +73,7 @@ const st = (s) => s || S;
 export const TEX = {};
 export function crearTexturasEtiqueta() {
   const loader = new THREE.TextureLoader();
-  for (const k of ['ok', 'dato', 'linea']) {
+  for (const k of ['ok', 'tapada', 'rayada']) {
     const t = loader.load(`assets/etq_${k}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
     TEX[k] = new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.28, roughness: 0.55 });
   }
@@ -85,7 +85,7 @@ const MAT_CARTON = new THREE.MeshStandardMaterial({ color: 0xa9794a, roughness: 
 const MAT_CINTA = new THREE.MeshStandardMaterial({ color: 0xffc61a, roughness: 0.55 });
 const GEO_ETQ = new THREE.PlaneGeometry(0.17, 0.125);
 
-// tipo: 'ok' | 'dato' | 'linea'. extras: { desdeCamion?: bool, x?, y?, z? }.
+// tipo: 'ok' | 'tapada' | 'rayada'. extras: { desdeCamion?: bool, x?, y?, z? }.
 // Si el 2.º argumento no parece S (no trae .cajas), se trata como extras.
 export function crearCaja(tipo = 'ok', Sarg = null, extras = {}) {
   let ss = st(Sarg);
@@ -133,6 +133,11 @@ export function quitarCaja(b, Sarg = null) {
 export function chip(b, txt, clase) { b.chipEl.textContent = txt; b.chipEl.className = 'chip ' + (clase || ''); b.chipOculto = !txt; }
 export const topeCarril = (z) => (z < 0.5 ? BELT : BELT - 0.11 * (z - 0.5));
 
+export function cambiarTipo(b, t) {                                   // un escenario cambia la etiqueta de un bulto que todavía no se leyó
+  b.tipo = t; b.malo = t !== 'ok';
+  if (TEX[t]) { b.etq.material = TEX[t]; b.etqSup.material = TEX[t]; b.etqInf.material = TEX[t]; }
+}
+export const proximoTipo = (Sarg = null) => { const ss = st(Sarg); return ss.cola.length ? ss.cola.shift() : PATRON[ss.patron++ % PATRON.length]; };
 export function spawn(Sarg = null) {
   const ss = st(Sarg);
   if (ss.stockCamion !== undefined) {                       // el camión trae stock contado: se va vaciando
@@ -146,7 +151,8 @@ export function spawn(Sarg = null) {
 // con un paso que pide un resultado, los bultos que todavía no llegaron a la isla toman ese resultado, así sale primero
 export function reasignar(tipos, Sarg = null) {
   const ss = st(Sarg);
-  const libres = ss.cajas.filter((b) => (b.fase === 'cinta' || b.fase === 'camion') && b.foto === null && !b.retorno && b.x < X_ISLA - 0.9).sort((p, q) => q.x - p.x);
+  const libres = ss.cajas.filter((b) => ['cinta', 'camion', 'amr', 'enCamion'].includes(b.fase) && b.foto === null && !b.retorno && b.x < X_ISLA - 0.9)
+    .sort((p, q) => (p.fase === 'enCamion') - (q.fase === 'enCamion') || q.x - p.x || (p.orden ?? 0) - (q.orden ?? 0));
   tipos.forEach((t, i) => {
     const b = libres[i]; if (!b) return;
     b.tipo = t; b.malo = t !== 'ok';
@@ -203,7 +209,7 @@ export function moverCaja(b, dt, Sarg = null) {
         break;
       }
       if (b.veredicto === 'NO_OK' && !b.retorno && b.x >= X_PUSH && ss.inspMueve) { b.x = X_PUSH; b.fase = 'empuje'; b.t = 0; ss.inspMueve = false; }
-      if (!ss.control && b.malo && b.x > 2.2 && !b.vistoMal) { b.vistoMal = true; chip(b, 'Etiqueta con defecto', 'SIN'); }
+      if (!ss.control && b.malo && b.x > 2.2 && !b.vistoMal) { b.vistoMal = true; chip(b, 'Etiqueta dañada', 'SIN'); }
       if (b.veredicto === 'OK' && b.x > 2.4) b.chipOculto = true;
       if (b.x >= X_PAL_ENTRA && palLista(ss)) {                        // llega al final: pasa al pallet de EXPEDICIÓN
         const p = ss.pal; b.pal = p; b.slot = p.n++; p.cajas.push(b); b.fase = 'palet'; b.t = 0; b.x0 = b.x; b.y0 = b.y;
@@ -231,7 +237,7 @@ export function moverCaja(b, dt, Sarg = null) {
       if (k >= 1) {                                                   // veredicto fusionado AND de las 3 caras
         b.veredicto = (!b.malo && b.disparos.every(Boolean)) ? 'OK' : 'NO_OK';
         ss.total++; if (!b.malo) ss.ok++;
-        chip(b, b.malo ? 'NO OK' : 'OK', b.malo ? 'NO_OK' : 'OK');
+        chip(b, b.malo ? 'No Read' : 'OK', b.malo ? 'NO_OK' : 'OK');
         if (CB.onVeredicto) CB.onVeredicto(b);                        // equivale a monitorControl('splash') + hudVeredicto
         if (ss.isla === b) ss.isla = null;
         b.pasoIsla = true; b.fase = 'cinta';
@@ -254,7 +260,7 @@ export function moverCaja(b, dt, Sarg = null) {
     case 'cae': {                                                     // pasa a la cinta de desvío (más baja), con la etiqueta hacia el operario
       b.t += dt; const k = Math.min(1, b.t / 0.45);
       b.z = lerp(b.z0, 3.1, suave(k)); b.y = lerp(b.y0, BELT_D + H / 2, k * k); b.rx = lerp(0.11, 0, k); b.ry = Math.PI * suave(k);
-      if (k >= 1) { b.fase = 'desvio'; chip(b, 'NO OK', 'NO_OK'); ss.mal++; }
+      if (k >= 1) { b.fase = 'desvio'; chip(b, 'No Read', 'NO_OK'); ss.mal++; }
       break;
     }
     case 'desvio': {                                                  // la cinta lleva el bulto hacia la isla hasta frenar detrás de la anterior
@@ -295,13 +301,10 @@ export function moverCaja(b, dt, Sarg = null) {
       b.z -= V * dt;
       const u = suave((3.1 - b.z) / 2.7), enRampa = b.z < 2.7 && b.z > 0.5;
       b.y = BELT_D + (BELT - BELT_D) * u + H / 2; b.rx = enRampa ? Math.atan2(BELT - BELT_D, 2.35) : 0; b.ry = Math.PI * (1 - u);
-      if (b.z <= 0.05) {
+      if (b.z <= 0.05) {                                              // vuelve a la línea ya registrado a mano: pasa la isla sin detenerse y sigue a expedición
         b.z = 0; b.y = BELT + H / 2; b.rx = 0; b.ry = 0; b.fase = 'cinta';
-        b.tipo = 'ok'; b.malo = false;
-        if (TEX.ok) { b.etq.material = TEX.ok; b.etqSup.material = TEX.ok; b.etqInf.material = TEX.ok; }
-        b.foto = null; b.fotos = [null, null, null]; b.disparos = [false, false, false];
-        b.veredicto = null; b.trig = false; b.retorno = false; b.vistoMal = false; b.decision = null; b.pasoIsla = false;
-        b.chipOculto = false;                                         // la segunda lectura ya sale bien
+        b.malo = false; b.pasoIsla = true; b.veredicto = 'OK'; b.manual = true;
+        chip(b, 'Registrado a mano', 'OK');
       }
       break;
     }
@@ -314,7 +317,10 @@ export function moverCaja(b, dt, Sarg = null) {
       }
       break;
     }
-    case 'apilada': { b.x = b.pal.x + b.ox; b.z = b.pal.z + b.oz; b.y = b.pal.y + b.oy; break; }
+    case 'apilada': {                                                // sigue al pallet (el autoelevador lo puede girar)
+      const p = b.pal, c = Math.cos(p.ry || 0), s2 = Math.sin(p.ry || 0);
+      b.x = p.x + b.ox * c + b.oz * s2; b.z = p.z - b.ox * s2 + b.oz * c; b.y = p.y + b.oy; b.ry = p.ry || 0; break;
+    }
   }
   const sin = b.chipEl.classList.contains('SIN');
   b.chip.visible = !b.chipOculto && !!b.chipEl.textContent && (sin ? !ss.control : (ss.control && ss.chips));

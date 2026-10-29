@@ -3,8 +3,10 @@
 Recorrido de unos 9 minutos sobre la línea de importación de TracePack, en 3D, para el TPI 2026
 (Tecnologías para la Automatización, UTN FRSFco, Grupo 1).
 
-**Es una línea de IMPORTACIÓN:** los bultos **se bajan del camión**, pasan por la acumulación y el
-alimentador, entran a la **isla 360°** y solo el bulto OK sigue a pallet y expedición.
+**Es una línea de IMPORTACIÓN:** el **AMR** baja los bultos del camión, pasan por la acumulación y el
+alimentador y entran a la **isla 360°**, que **solo lee el código de barras**, como dice el TPI: resultado
+**OK** (se registra en el ERP con el ID del ciclo) o **No Read** (se desvía a revisión manual). Los pallets
+completos los lleva un autoelevador al rack del almacén.
 
 ## La isla 360°
 
@@ -17,6 +19,16 @@ alimentador, entran a la **isla 360°** y solo el bulto OK sigue a pallet y expe
   de luz de cada una.
 - La etiqueta viene en **una sola cara al azar** (arriba, abajo o costado): el rótulo sobre el bulto y la
   pantalla del control muestran qué cámara la encontró.
+- **No Read:** el operario de la cinta de desvío lo lee con el lector de mano (o le pega una etiqueta nueva)
+  y el bulto sigue por la cinta de retorno a expedición, ya registrado.
+
+## La planta
+
+- **Descarga con el AMR** de dos brazos del hito H3: el camión llega al muelle, abre las puertas y el PLC
+  autoriza cada recogida solo con lugar en la acumulación (menos de 3 bultos). Así la línea nunca se llena.
+- **Almacén:** rack selectivo de 7 bahías × 3 niveles y un autoelevador que guarda cada pallet completo.
+- **Nave:** columnas, cabriadas y luminarias, pared con muelles y portones (con un segundo camión en el patio),
+  senda peatonal, zona de autoelevadores, carteles de seguridad, matafuegos y barandas.
 - Baliza de torre (verde libre, ámbar girando, roja con falla, celeste en cada disparo) y tira de LED en el techo.
 
 ## Cómo abrirla
@@ -28,18 +40,20 @@ mientras presentás; cerrala para terminar. No necesita internet, Python ni inst
 ## Cómo se usa
 
 - Flechas izquierda y derecha, o los puntos de abajo: pasar de paso. Espacio: pausar o seguir. `F`: pantalla completa.
-- **Explorar**: pausa el recorrido y deja mover la cámara con el mouse. Tocá un equipo para ver su ficha.
+- **Explorar**: pausa el recorrido y deja mover la cámara con el mouse. La rueda acerca **hacia donde apunta el
+  mouse** (también pellizco en el touchpad); clic derecho arrastra. Tocá un equipo para ver su ficha.
+- **La secuencia E0–E5** se muestra en pantalla completa: el diagrama hace zoom a cada etapa y la explica.
 - Menú **Simulación** (abajo a la izquierda): vistas de cámara (incluidas C1, C2 y C3 de cerca), velocidad,
   **HMI** estilo TracePack, **GRAFCET E0–E5** en vivo, **histórico** exportable a CSV y **escenarios** para
   provocar casos atípicos (ERP caído, falta de aire, plato descentrado, No Read…).
 
 ## Las pantallas
 
-- **Pantalla del control** (junto a la isla): por bulto, las 3 vistas C1/C2/C3 (resaltada la que encontró la
-  etiqueta), los controles que se van marcando, un **pantallazo verde o rojo** con la precisión y la etiqueta con
-  los **errores numerados**.
-- **Pantalla de la cinta de desvío**: lo mismo, más **tick verde** (lectura correcta: se reimprime la etiqueta) y
-  **cruz roja** (lectura incorrecta: se repite). En los dos casos el bulto vuelve a pasar por la isla.
+- **Pantalla del control** (junto a la isla): por bulto, las 3 vistas C1/C2/C3 (resaltada la que tiene la
+  etiqueta), los pasos de la lectura, un **pantallazo verde (OK + código) o rojo (No Read)** y la ficha: código,
+  cámara, tiempo, certeza y acción del PLC (E2 registro / E3 desvío).
+- **Pantalla de la cinta de desvío**: lo mismo, más dos botones: **leído con el lector de mano** o **etiqueta nueva**.
+  En los dos casos el bulto queda registrado y sigue a expedición.
 
 ## Qué es real y qué es ilustrativo
 
@@ -50,8 +64,8 @@ mientras presentás; cerrala para terminar. No necesita internet, Python ni inst
   ```
   pip install pillow opencv-python numpy zxing-cpp
   python presentacion_isla360/herramientas/generar_etiquetas.py
-  ``` Casos: etiqueta OK, dato distinto
-  (código postal X2440 en vez de X2400 y peso 3,35 kg en vez de 2,35 kg) y línea blanca del cabezal en la barra de control.
+  ``` Casos: etiqueta OK y dos No Read reales
+  (el script verifica que zxing no los lea): un pliegue de cinta de embalar sobre el código y un código rayado y manchado.
 - Tiempos, velocidad de cinta y ritmo son supuestos de la simulación, como en el TPI (secciones 15.5 y 21).
 - La tabla de E/S (`docs/TABLA_IO.md`) y la arquitectura (`docs/ARQUITECTURA.md`) son una **propuesta a validar, no compilada en TIA**.
 

@@ -36,7 +36,6 @@ export const X_REIN = X_PUSH - 4.15;                       // subida que devuelv
 export const CAM_Y = 0.95, CAM_Z = -0.82;                  // altura / lado de lectura (referencia para la isla)
 export const PAL_X = 6.0, OP_PAL_X = 5.05;                 // pallet de expedición, al otro extremo
 export const CAJAS_PALLET = 12;
-const OFFSET_CAMION = 12.45;                               // el modelo trae el camión desplazado; se compensa como en el original
 
 // ------------------------------------------------------------------ estado y nodos (los pueblan initEscena / armarEscena)
 export const S = {
@@ -147,7 +146,7 @@ function rotulos() {
   llamada('isla', 'Isla 360° · 3 cámaras con luz propia', new THREE.Vector3(X_ISLA, 2.75, 0), 'nuevo');
   llamada('fotocelula', 'Fotocélula: avisa que entra un bulto', new THREE.Vector3(X_TRIG, 1.45, -0.56));
   llamada('pc', 'Pantalla del control: lo que ve la isla', new THREE.Vector3(X_ISLA - 1.25, 1.85, -1.55));
-  llamada('pusher', 'Desviador: separa el bulto NO OK', new THREE.Vector3(X_PUSH, 1.45, -1.0), 'alerta');
+  llamada('pusher', 'Desviador: separa el bulto No Read', new THREE.Vector3(X_PUSH, 1.45, -1.0), 'alerta');
   llamada('revision', 'Cinta de desvío: bultos frenados para revisar', new THREE.Vector3((X_TOPE + X_PUSH) / 2, 1.3, 3.1), 'alerta');
   llamada('pallet', 'Pallet de expedición: se arma acá', new THREE.Vector3(PAL_X, 1.55, 0));
   llamada('expedicion', 'Expedición', new THREE.Vector3(8.1, 1.6, 0));
@@ -181,15 +180,6 @@ function crearPallet(x, y, z) {
   for (let i = 0; i < 7; i++) tabla(0.12, 0.025, 1.0, -0.54 + i * 0.18, 0.1375, 0);
   const film = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.62, 0.92), matFilm); film.position.set(0, 0.46, 0); film.visible = false; g.add(film);
   return { estado: 'lista', x, y, z, n: 0, listas: 0, cajas: [], malas: 0, t: 0, g, film, slot: -1 };
-}
-function palletEstatico(x, z) {                            // pallet completo que ya viene cargado en el camión
-  const p = crearPallet(x, -0.05, z); p.film.visible = true; p.estado = 'cargado';
-  for (let i = 0; i < CAJAS_PALLET; i++) {
-    const capa = Math.floor(i / 4), j = i % 4, m = new THREE.Mesh(GEO_CAJA, MAT_CARTON);
-    m.position.set((j % 2 ? 0.275 : -0.275) * (capa % 2 ? -1 : 1), 0.15 + H / 2 + capa * H, Math.floor(j / 2) ? 0.19 : -0.19); m.castShadow = true; p.g.add(m);
-    const t = new THREE.Mesh(CINTA_GEO, MAT_CINTA); t.position.x = 0.08; m.add(t);
-  }
-  return p;
 }
 export function crearMonitor(x, z, yaw) {
   const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = yaw; scene.add(g);
@@ -225,7 +215,7 @@ function etqPlaceholder(tipo) {
 }
 function crearTexturasEtiqueta(base) {
   const loader = new THREE.TextureLoader();
-  for (const k of ['ok', 'dato', 'linea']) {
+  for (const k of ['ok', 'tapada', 'rayada']) {
     TEX[k] = new THREE.MeshStandardMaterial({ map: etqPlaceholder(k), emissive: 0xffffff, emissiveMap: null, emissiveIntensity: 0.28, roughness: 0.55 });
     TEX[k].emissiveMap = TEX[k].map;
     loader.load(`${base}/etq_${k}.jpg`,
@@ -247,7 +237,7 @@ function armarEscena(gltf) {
   // Lo que no va en importación: robot de descarga, rack, tótem, colector, senda,
   // muelle de recepción y la zona de expedición vieja del final. El camión NO se
   // oculta: se reubica al INICIO (ver crearTransporte).
-  const OCULTAR = /^(Inspeccion_|Encoder$|S_ZONA_|AMR|Rack_|Zona_AMR|Piso_AMR|Beam_|S_(CAMION|CARGA|ACU|EXC)_|Reader_|Colgante_|Muelle_|Soporte_R|Tunel_(?!Poste_\+0\.9_\+1\.0)|Bulto_|Colector_|Retorno_|Revision_Fondo|Revision_Pared|Expedicion_|Cartel_Expedicion|Zona_Revision_Marca|HMI_|Senda_|Piso_Senda|Linea_Seg_S|Patio$)/;
+  const OCULTAR = /^(Inspeccion_|Encoder$|S_ZONA_|Rack_|Beam_|S_EXC_|Reader_|Colgante_|Soporte_R|Tunel_(?!Poste_\+0\.9_\+1\.0)|Bulto_|Colector_|Retorno_|Revision_Fondo|Revision_Pared|Expedicion_|Cartel_Expedicion|Zona_Revision_Marca|HMI_|Senda_|Piso_Senda|Linea_Seg_S)/;
   raiz.children.forEach((o) => { if (OCULTAR.test(o.name)) o.visible = false; });
 
   // bandas del modelo con textura (el scroll lo hace el bucle: G.bandas = [nombre, mapa])
@@ -261,7 +251,7 @@ function armarEscena(gltf) {
     m.map = texX.clone(); m.map.needsUpdate = true; m.color.set(0xffffff); m.roughness = 0.75;
     G.bandas.push([n, m.map]);
   }
-  for (const [nombre, tile, base, manchas, juntas] of [['Piso', 4, '#a9aeb3', '60,62,66', true], ['Terreno', 8, '#80858b', '60,62,66', false]]) {
+  for (const [nombre, tile, base, manchas, juntas] of [['Piso', 4, '#a9aeb3', '60,62,66', true], ['Patio', 6, '#3b3c3f', '10,10,12', false], ['Terreno', 8, '#6f7a6a', '40,48,38', false]]) {
     const o = busca(nombre); if (!o) continue;
     uvPlano(o, tile); const m = matPropio(o); m.map = texturaPiso(base, manchas, juntas); m.color.set(0xffffff); m.roughness = 0.9;
   }
@@ -324,9 +314,6 @@ function crearTransporte() {
   const raiz = G.raiz;
   const pataMat = new THREE.MeshStandardMaterial({ color: 0x4a545d, roughness: 0.6, metalness: 0.4 });
   const pata = (x, z, alto) => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, alto - 0.05, 10), pataMat); p.position.set(x, (alto - 0.05) / 2, z); p.castShadow = true; scene.add(p); };
-  // puente corto muelle→acumulación (descarga del camión)
-  G.descarga = cintaPropia((MUELLE_IMP + 2.5 + X_SPAWN - 0.4) / 2, BELT, 0, (X_SPAWN - 0.4) - (MUELLE_IMP + 2.5), 0.8, false);
-  for (const x of [MUELLE_IMP + 2.8, X_SPAWN - 0.7]) for (const s of [-1, 1]) pata(x, s * 0.36, BELT);
   // UNA sola cinta de desvío (igual que el original): las NO OK bajan por rodillos y
   // quedan frenadas contra el tope; la revisada sale por el final y una subida corta
   // la devuelve a la línea. Todo corrido al X_PUSH nuevo.
@@ -339,35 +326,27 @@ function crearTransporte() {
   const largo = 2.35, ang = Math.atan2(BELT - BELT_D, largo);
   G.conector = cintaPropia(X_REIN, (BELT + BELT_D) / 2, 2.75 - largo / 2, largo, 0.8, true, ang);
   for (const [z, h] of [[2.55, BELT_D], [0.75, BELT - 0.04]]) for (const s of [-1, 1]) pata(X_REIN + s * 0.36, z, h);
-  // pallet de expedición al otro extremo + zorra y operario que lo mueve
+  // pallet de expedición al final de la línea (el autoelevador lo lleva al almacén: almacen.js)
   S.pal = crearPallet(PAL_X, 0, 0); S.estaticos = []; S.cargados = []; S.viaje = null;
-  G.jack = new THREE.Group(); G.jack.visible = false; scene.add(G.jack);
-  const azul = new THREE.MeshStandardMaterial({ color: AMARILLO, roughness: 0.5, metalness: 0.3 });   // zorra amarilla
-  for (const z of [-0.225, 0.225]) { const f = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.1), azul); f.position.set(0.05, 0.03, z); f.castShadow = true; G.jack.add(f); }
-  const cuerpo = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.55), azul); cuerpo.position.set(-0.68, 0.12, 0); cuerpo.castShadow = true; G.jack.add(cuerpo);
-  G.mango = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 1, 8), new THREE.MeshStandardMaterial({ color: 0x20262c, roughness: 0.5 })); scene.add(G.mango);
-  if (G.op) { G.opPal = G.op.clone(true); scene.add(G.opPal); }
-  S.opPal = { x: OP_PAL_X, z: 0.85, yaw: 0, marcha: false };
-  // CAMIÓN AL INICIO: el del modelo, con las puertas abiertas hacia la línea (+X) para la descarga
+  if (G.op) { G.opPal = G.op.clone(true); G.opPal.position.set(OP_PAL_X, 0, 0.95); G.opPal.rotation.y = Math.PI; scene.add(G.opPal); }
+  // CAMIÓN y AMR del hito H3, en su lugar original: la cola del camión contra el muelle (descarga.js los mueve)
   G.camion = raiz.getObjectByName('Camion');
   if (G.camion) {
-    G.camion.userData.id = 'camion'; G.camion.visible = true;
-    G.camion.rotation.y = 0;
-    G.camion.position.set(MUELLE_IMP - OFFSET_CAMION, 0, 0);
-    G.camion.updateMatrixWorld(true);
-    const bc = new THREE.Box3().setFromObject(G.camion);
-    G.camion.position.x += (MUELLE_IMP - 0.35) - bc.max.x;                // la cola abierta queda contra el muelle
-    const pI = raiz.getObjectByName('Puerta_I'), pD = raiz.getObjectByName('Puerta_D');
-    if (pI) pI.rotation.y = 1.5 * Math.PI;
-    if (pD) pD.rotation.y = -1.5 * Math.PI;
-    for (const n of ['Remolque_Techo', 'Remolque_Lateral_+1', 'Remolque_Franja_+1']) { const o = raiz.getObjectByName(n); if (o) o.visible = false; }
+    G.camion.userData.id = 'camion'; G.camion.visible = true; G.camion.rotation.y = 0; G.camion.position.set(0, 0, 0);
+    for (const n of ['Remolque_Techo', 'Remolque_Lateral_+1', 'Remolque_Franja_+1']) { const o = raiz.getObjectByName(n); if (o) o.visible = false; }   // se ve la carga desde la línea
     G.camion.traverse((o) => { if (o.isMesh) o.castShadow = false; });
-    S.estaticos = [palletEstatico(MUELLE_IMP - 2.2, 0), palletEstatico(MUELLE_IMP - 5.0, 0)];
   }
-  // patio propio bajo el camión, al inicio
-  const tx = texturaPiso('#3b3c3f', '10,10,12', false); tx.repeat.set(5, 3);
-  const patio = new THREE.Mesh(new THREE.PlaneGeometry(24, 14), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 }));
-  patio.rotation.x = -Math.PI / 2; patio.position.set(MUELLE_IMP - 4, -1.1, 0); patio.receiveShadow = true; scene.add(patio);
+  G.puertas = [raiz.getObjectByName('Puerta_I'), raiz.getObjectByName('Puerta_D')];
+  G.amr = raiz.getObjectByName('AMR');
+  if (G.amr) {
+    G.amr.userData.id = 'amr';
+    G.carro = raiz.getObjectByName('AMR_Carro');
+    G.brazo = ['I', 'D'].map((n) => ['Hombro', 'Codo', 'Muneca'].map((j) => raiz.getObjectByName(`AMR_${j}_${n}`)));
+    G.amrFov = raiz.getObjectByName('AMR_FOV');
+    if (G.amrFov) { G.amrFov.castShadow = false; G.amrFov.material = G.amrFov.material.clone(); Object.assign(G.amrFov.material, { transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }); }
+    const mats = {}; raiz.traverse((o) => { if (o.isMesh && o.material?.name) mats[o.material.name] = o.material; });
+    G.ventosas = [mats.Ventosa_I, mats.Ventosa_D]; G.luzAmr = mats.Luz_AMR_Estado;
+  }
 }
 
 // ------------------------------------------------------------------ init: renderer, escena, luces, modelo
@@ -389,7 +368,7 @@ function armarBase(cont) {
   scene.fog = new THREE.Fog(0xdadde1, 70, 240);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.65;
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
+  camera = new THREE.PerspectiveCamera(42, 1, 0.15, 400);
   camera.position.set(-6.5, 4.2, 7.5);
   composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
@@ -399,14 +378,10 @@ function armarBase(cont) {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.49;
-  controls.minDistance = 1.6; controls.maxDistance = 38;
-  controls.enableZoom = false; controls.rotateSpeed = 0.7; controls.dampingFactor = 0.07;
+  controls.minDistance = 0.8; controls.maxDistance = 60;
+  controls.enableZoom = true; controls.zoomToCursor = true; controls.zoomSpeed = 1.6;   // la rueda acerca hacia donde apunta el mouse
+  controls.screenSpacePanning = true; controls.rotateSpeed = 0.7; controls.dampingFactor = 0.07;
   controls.target.set(-1, 0.8, 0);
-  renderer.domElement.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const pasos = Math.max(-1, Math.min(1, e.deltaY / 100)), d = zoomObj ?? camera.position.distanceTo(controls.target);
-    zoomObj = Math.max(controls.minDistance, Math.min(controls.maxDistance, d * Math.pow(1.015, pasos)));
-  }, { passive: false });
 
   const hemi = new THREE.HemisphereLight(0xeef3f8, 0x4a4f55, 1.1);
   scene.add(hemi);

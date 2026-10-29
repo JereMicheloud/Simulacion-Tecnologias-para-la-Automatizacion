@@ -143,17 +143,19 @@ button, select, input { font: inherit; }
 #d-campos .pc i s { display: block; height: 100%; background: #3ddc97; }
 #d-campos li.REVISAR .pc i s { background: #f0bf55; } #d-campos li.FALTA .pc i s { background: #ff5a4d; }
 
-/* comparación H2 vs isla */
+/* ventajas de la isla */
 #costos { position: fixed; z-index: 6; left: 420px; right: 20px; top: 92px; bottom: 88px; overflow: auto; padding: 18px 20px 14px; border-radius: 18px; background: rgba(255, 255, 255, .97); box-shadow: var(--sombra); }
-.cmp { width: 100%; border-collapse: separate; border-spacing: 10px 0; table-layout: fixed; }
-.cmp thead td { width: 190px; }
-.cmp .cmp-col { padding: 12px 14px; border-radius: 14px; color: #fff; text-align: left; vertical-align: top; }
-.cmp .cmp-col.h2 { background: #5b6672; } .cmp .cmp-col.isla { background: linear-gradient(135deg, var(--celeste), var(--celeste-osc)); box-shadow: inset 0 -5px 0 var(--amarillo); }
-.cmp-col small { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; font-weight: 600; }
-.cmp-col b { display: block; font-size: 19px; margin: 2px 0; } .cmp-col span { font-size: 13px; font-weight: 400; opacity: .92; }
-.cmp tbody th { text-align: left; font-size: 13px; color: var(--tinta-2); font-weight: 650; padding: 10px 0; border-bottom: 1px solid var(--linea); vertical-align: top; }
-.cmp tbody td { font-size: 14px; line-height: 1.4; padding: 10px 4px; border-bottom: 1px solid var(--linea); vertical-align: top; }
-.cmp tbody td:last-child { color: #0b4466; font-weight: 600; }
+.vent-cab small { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--celeste-osc); }
+.vent-cab h2 { margin: 2px 0 12px; font-size: 26px; }
+.vent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.vent { position: relative; padding: 14px 16px 14px; border-radius: 14px; background: #f3f8fb; border: 1px solid #dbe8f0; overflow: hidden; animation: vent-entra .5s ease both; }
+.vent:nth-child(2) { animation-delay: .08s; } .vent:nth-child(3) { animation-delay: .16s; } .vent:nth-child(4) { animation-delay: .24s; }
+.vent:nth-child(5) { animation-delay: .32s; } .vent:nth-child(6) { animation-delay: .4s; } .vent:nth-child(7) { animation-delay: .48s; } .vent:nth-child(8) { animation-delay: .56s; }
+.vent::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: linear-gradient(var(--celeste), var(--amarillo)); }
+.vent b { display: inline-block; font-size: 13px; font-weight: 800; color: #04202f; background: var(--amarillo); padding: 2px 8px; border-radius: 999px; }
+.vent h3 { margin: 8px 0 4px; font-size: 17px; color: #0b4466; }
+.vent p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--tinta-2); }
+@keyframes vent-entra { from { opacity: 0; transform: translateY(10px); } }
 .c-pie { margin: 10px 2px 0; color: var(--tinta-2); font-size: 11.5px; line-height: 1.4; }
 
 /* controles */
@@ -381,3 +383,21 @@ button, select, input { font: inherit; }
 @keyframes intro-sube { from { opacity: 0; transform: translateY(18px); } }
 @keyframes intro-fuera { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .intro, .intro-caja { animation: none; } .intro { display: none; } }
+
+/* GRAFCET en pantalla completa: recorrido guiado con zoom a cada etapa */
+#grafcet.pleno { left: 0; top: 0; right: 0; bottom: 0; width: auto; max-height: none; z-index: 20; border-radius: 0; padding: 0; border: 0; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 35%, #142334, #0a1118 75%); display: block; }
+#grafcet.pleno .tit, #grafcet.pleno .etapas, #grafcet.pleno .cerrar-panel { display: none; }
+#grafcet.pleno .grafcet-wrap { position: absolute; inset: 0 0 230px 0; display: block; }
+#grafcet.pleno svg { width: 100%; height: 100%; }
+#grafcet .g-tour:empty { display: none; }
+#grafcet.pleno .g-tour { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: min(980px, calc(100% - 40px)); padding: 16px 22px; border-radius: 16px;
+  background: rgba(15, 26, 36, .92); border: 1px solid #2b3743; border-left: 6px solid var(--amarillo); color: #e3e9ef; box-shadow: 0 14px 40px rgba(0, 0, 0, .45); }
+#grafcet .g-tour small { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #8fd8ff; }
+#grafcet .g-tour h3 { margin: 4px 0 6px; font-size: 26px; }
+#grafcet .g-tour p { margin: 0 0 8px; font-size: 16px; line-height: 1.5; color: #cfdbe6; }
+#grafcet .g-tour ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+#grafcet .g-tour li { font-size: 14px; color: var(--amarillo); font-weight: 600; }
+#grafcet .g-tour.entra { animation: g-entra .45s ease both; }
+@keyframes g-entra { from { opacity: 0; transform: translate(-50%, 12px); } }
+#control { z-index: 25; }

@@ -63,7 +63,7 @@ export const CFG = {
   luces: {
     LUZ_SUP: { tipo: 'anillo', para: 'CAM_SUP', pos: [-0.2, 1.8, 0.0], color: 0xffffff, nota: 'Anillo arriba: luz pareja sin brillos sobre el cartón.' },
     LUZ_INF: { tipo: 'panel difuso', para: 'CAM_INF', pos: [-0.2, 0.45, 0.0], color: 0xffffff, nota: 'Panel difuso bajo el vidrio: atraviesa el plato sin encandilar.' },
-    LUZ_LAT: { tipo: '2 barras', para: 'CAM_LAT', pos: [-0.2, 1.0, -0.7], color: 0xffffff, nota: 'Dos barras al costado: resaltan tinta corrida y líneas cortadas.' },
+    LUZ_LAT: { tipo: '2 barras', para: 'CAM_LAT', pos: [-0.2, 1.0, -0.7], color: 0xffffff, nota: 'Dos barras al costado: iluminan la etiqueta del costado sin reflejos.' },
   },
 
   // Color del cono FOV de cada cámara en la escena.
@@ -73,7 +73,7 @@ export const CFG = {
     tTransporte: 4,    // cinta descarga → isla (base FlexSim T_Transporte)
     tLectura: 3.2,     // 3 caras en un giro del plato (T_GIRO)
     tRegistro: 1.2,    // alta en ERP (base FlexSim T_Registro)
-    tDesvio: 2.0,      // brazo saca el NO OK a la cinta de desvío
+    tDesvio: 2.0,      // brazo saca el bulto No Read a la cinta de desvío
     T_GIRO: 3.2,
     T_VISUAL: 1.7,     // lo visual aparece ~1,7 s después de la foto
     T_TEXTO: 2.75,     // el texto campo por campo, un segundo después
@@ -90,7 +90,7 @@ export const CFG = {
   },
 
   // Secuencia de resultados que muestra la demo (8 bultos en loop).
-  patron: ['ok', 'ok', 'linea', 'ok', 'ok', 'dato', 'ok', 'ok'],
+  patron: ['ok', 'ok', 'rayada', 'ok', 'ok', 'tapada', 'ok', 'ok'],
 
   // Secuencia E0-E5 adaptada a etiquetas (estación E2 de referencia H2).
   pasos: {
@@ -108,9 +108,9 @@ export const CFG = {
   casos: [
     { id: 'cruzado', nombre: 'Etiqueta cruzada', prob: 0.04, desc: 'Viene la etiqueta de otro producto o de otro mercado. El código lee pero el diseño no coincide: mirá el aviso ámbar.' },
     { id: 'trabaCarril', nombre: 'Traba en el carril', prob: 0.02, desc: 'Un bulto se cruza antes del plato y tapa la fotocélula. Hay que acomodarla a mano y darle marcha de nuevo.' },
-    { id: 'etiquetas', nombre: 'Etiqueta faltante / mal pegada', prob: 0.05, desc: 'Etiqueta ausente, arrugada o a medio pegar: la cámara la ve torcida y la marca NO OK directo.' },
+    { id: 'etiquetas', nombre: 'Etiqueta faltante / mal pegada', prob: 0.05, desc: 'Etiqueta ausente, arrugada o a medio pegar: la cámara la ve torcida y la da No Read directo.' },
     { id: 'erp', nombre: 'ERP caído', prob: 0.02, desc: 'Se corta la conexión con el ERP: los bultos se acumulan y el registro queda pendiente hasta que vuelve.' },
-    { id: 'aire', nombre: 'Falta de aire', prob: 0.015, desc: 'Sin presión el brazo no empuja: el NO OK queda en el plato y se frena la línea hasta que se purga.' },
+    { id: 'aire', nombre: 'Falta de aire', prob: 0.015, desc: 'Sin presión el brazo no empuja: el bulto No Read queda en el plato y se frena la línea hasta que se purga.' },
     { id: 'lectura', nombre: 'No Read (dudosa)', prob: 0.06, desc: 'Foto movida o reflejo en el vidrio: el lector no se anima y la manda a revisión manual con el lector de mano.' },
   ],
 
@@ -122,11 +122,14 @@ export const CFG = {
     camaraLat: { t: 'Cámara lateral (C3)', d: 'Mira el costado entre dos barras de LED. Como el plato gira, ve los cuatro lados del bulto en una sola vuelta.' },
     luces: { t: 'Luces (una por cámara)', d: 'Anillo arriba, anillo difuso abajo y dos barras al costado. Destellan 60 a 100 microsegundos solo cuando dispara su cámara: la foto sale nítida aunque el plato gire.' },
     fotocelula: { t: 'Fotocélula', d: 'En la boca de la isla. Cuando el bulto corta el haz, el PLC lo da por ingresado (E0 → E1): crea el ID del ciclo y prepara el giro.' },
-    pc: { t: 'PC industrial y pantalla del control', d: 'La PC va colgada de la celda y recibe las 3 cámaras por cable. Compara la foto con el diseño de la etiqueta y con el ERP, y muestra el resultado en la pantalla de al lado.' },
-    pusher: { t: 'Desviador', d: 'Cilindro neumático después de la isla: saca el bulto NO OK a la rampa de rodillos y de ahí a la cinta de desvío. Si le falta aire, el PLC va a E5.' },
-    tope: { t: 'Tope y retorno', d: 'Los NO OK quedan frenados uno tras otro en el tope. El operario los revisa en pantalla (tick verde o cruz roja) y suben por la cinta de vuelta para pasar de nuevo por la isla.' },
+    pc: { t: 'PC industrial y pantalla del control', d: 'La PC va colgada de la celda y recibe las 3 cámaras por cable. Busca y decodifica el código de barras en las 3 fotos, entrega al PLC el resultado (OK o No Read) y lo muestra en la pantalla de al lado.' },
+    pusher: { t: 'Desviador', d: 'Cilindro neumático después de la isla: saca el bulto No Read a la rampa de rodillos y de ahí a la cinta de desvío. Si le falta aire, el PLC va a E5.' },
+    tope: { t: 'Tope y retorno', d: 'Los bultos No Read quedan frenados uno tras otro en el tope. El operario los lee con el lector de mano (o les pega una etiqueta nueva) y vuelven por la cinta de retorno hacia expedición.' },
     operario: { t: 'Operario', d: 'Arma el pallet en expedición y atiende la revisión: mira la pantalla de la cinta de desvío y, si hace falta, lee el código con el lector de mano.' },
-    pallet: { t: 'Pallet de expedición', d: 'Acá se arma el pallet de 12 bultos ya controlados, del lado opuesto al camión. Solo llega lo que pasó el control: lo NO OK nunca pisa este pallet.' },
-    camion: { t: 'Camión (recepción)', d: 'En importación el camión está al INICIO: trae la mercadería de afuera. Se descarga a la cinta y de ahí va a la acumulación y al plato.' },
+    pallet: { t: 'Pallet de expedición', d: 'Acá se arma el pallet de 12 bultos, del lado opuesto al camión. Solo llegan bultos registrados: por la isla o a mano en la revisión. Completo, el autoelevador lo lleva al rack.' },
+    camion: { t: 'Camión (recepción)', d: 'En importación el camión está al INICIO: llega al muelle, abre las puertas y S_CAMION confirma que está en posición. Trae 36 bultos apilados que descarga el AMR.' },
+    amr: { t: 'AMR de dos brazos', d: 'Robot móvil del hito H3: con visión 3D localiza el bulto, lo toma con dos cabezales de ventosas, verifica el agarre y lo apoya en el punto de carga. Solo recoge si el PLC lo autoriza (acumulación con lugar).' },
+    autoelevador: { t: 'Autoelevador', d: 'Retira cada pallet completo del puesto de la línea y lo guarda en un lugar libre del rack.' },
+    rack: { t: 'Rack de pallets', d: 'Estantería selectiva de 7 bahías y 3 niveles. Cuando se llena, el pallet más antiguo sale a despacho.' },
   },
 };

@@ -40,33 +40,33 @@
 const CASOS_DEF = [
   {
     id: 'cruzada', titulo: 'Bulto cruzado en la entrada', prob: 0.35,
-    desc: 'El bulto entra cruzado y se traba antes de la isla: vence el tiempo de S_ZONA y el PLC va a E5. El operario la endereza y con el rearme sigue con el mismo ID.',
+    desc: 'El bulto entra cruzado y se traba antes de la isla: vence el tiempo de S_ZONA y el PLC va a E5. El operario lo endereza y con el rearme sigue con el mismo ID.',
     oportunidad: 'por bulto, en el transporte a la isla',
-    alarma: { tipo: 'atasco', titulo: 'Falla de posicionamiento', causa: 'S_ZONA no confirmó la llegada dentro del tiempo máximo: bulto cruzado y trabada antes de la isla.' },
+    alarma: { tipo: 'atasco', titulo: 'Falla de posicionamiento', causa: 'S_ZONA no confirmó la llegada dentro del tiempo máximo: bulto cruzado y trabado antes de la isla.' },
     resolucion: 'El operario endereza el bulto y libera la entrada.',
     rearme: 'E1: retoma el traslado a la isla con el mismo ID.',
   },
   {
     id: 'trabada', titulo: 'Bulto trabado en los rodillos de desvío', prob: 0.5,
     solo: ['NOREAD', 'NO_OK', 'DATO', 'LINEA'],
-    desc: 'El NO OK se atasca en los rodillos y no confirma S_PASO: alarma de desvío y E5. Al destrabarla sigue a revisión y el ciclo se cierra documentado.',
-    oportunidad: '50 % de los NO OK, en el paso por el desvío',
+    desc: 'El bulto No Read se atasca en los rodillos y no confirma S_PASO: alarma de desvío y E5. Al destrabarlo sigue a revisión y el ciclo se cierra documentado.',
+    oportunidad: '50 % de los bultos No Read, en el paso por el desvío',
     alarma: { tipo: 'desvio', titulo: 'Alarma de desvío', causa: 'Falta confirmación de paso del bulto (S_PASO): quedó trabado en los rodillos.' },
     resolucion: 'El operario destraba los rodillos; el bulto sigue a la cinta de desvío.',
     rearme: 'E0: ciclo cerrado y documentado, isla libre.',
   },
   {
-    id: 'etiquetas', titulo: 'Etiquetas dañadas (impresión corrida)', prob: null,
-    desc: 'Mientras está prendido la lectura OK cae al 60 %: hay más NO OK y la cinta de desvío se llena antes. No es falla: cada bulto va a E3 y a revisión.',
+    id: 'etiquetas', titulo: 'Etiquetas dañadas o tapadas', prob: null,
+    desc: 'Mientras está prendido la lectura OK cae al 60 %: hay más No Read y la cinta de desvío se llena antes. No es falla: cada bulto va a E3 y a revisión.',
     oportunidad: 'permanente mientras está prendido',
     alarma: null, // condición, no falla: no dispara E5 por sí mismo
-    resolucion: 'Avisar a impresión (cabezal de la impresora, ribbon) y reponer etiquetas.',
+    resolucion: 'Avisar al origen: las etiquetas llegan dañadas. En revisión se leen a mano o se reetiquetan.',
     rearme: 'Sin rearme: al apagarlo la lectura vuelve a la base.',
   },
   {
     id: 'erp', titulo: 'ERP sin respuesta', prob: 0.3,
     solo: ['OK'],
-    desc: 'El registro de una OK no se confirma en tiempo: E5 con el bulto retenido. Se consulta por ID, el registro ya existía y no se duplica: con el rearme pasa a E4 y sale a pallet.',
+    desc: 'El registro de un bulto OK no se confirma en tiempo: E5 con el bulto retenido. Se consulta por ID, el registro ya existía y no se duplica: con el rearme pasa a E4 y sale a pallet.',
     oportunidad: '30 % de los OK, en el registro',
     alarma: { tipo: 'registro', titulo: 'Alarma de registro', causa: 'Venció el tiempo de espera sin confirmación. Bulto retenido en la isla; código conservado.' },
     resolucion: 'Vuelve la conexión: se consulta por ID y se recupera la confirmación sin duplicar.',
@@ -75,17 +75,17 @@ const CASOS_DEF = [
   {
     id: 'aire', titulo: 'Falta de aire comprimido', prob: 0.4,
     solo: ['NOREAD', 'NO_OK', 'DATO', 'LINEA'],
-    desc: 'El brazo no llega a extender: falta S_EXT al desviar una NO OK y salta la alarma de desvío (E5). Se purga, se verifica la electroválvula y el bulto va a revisión.',
-    oportunidad: '40 % de los NO OK, en la extensión del brazo',
+    desc: 'El brazo no llega a extender: falta S_EXT al desviar un bulto No Read y salta la alarma de desvío (E5). Se purga, se verifica la electroválvula y el bulto va a revisión.',
+    oportunidad: '40 % de los bultos No Read, en la extensión del brazo',
     alarma: { tipo: 'desvio', titulo: 'Alarma de desvío', causa: 'Falta confirmación de extensión (S_EXT) dentro del tiempo máximo: sin presión el brazo no empuja.' },
     resolucion: 'El operario purga la línea y verifica aire y electroválvula; el bulto se lleva a revisión.',
     rearme: 'E0: ciclo cerrado y documentado, isla libre.',
   },
   {
-    id: 'lectura', titulo: 'Lectura inválida (C1/C2)', prob: 0.2,
-    desc: 'C1 y C2 se contradicen o se pierde comunicación con una cámara: va a E5 y NO se trata como NO OK. Se verifican cámaras y comunicación.',
+    id: 'lectura', titulo: 'Lectura inválida (códigos contradictorios)', prob: 0.2,
+    desc: 'Dos cámaras entregan códigos distintos o se pierde la comunicación con una cámara: va a E5 y NO se trata como No Read. Se verifican cámaras y comunicación.',
     oportunidad: '20 % por bulto, en la lectura de la isla',
-    alarma: { tipo: 'lectura', titulo: 'Lectura inválida', causa: 'C1 y C2 leen datos distintos, o se perdió comunicación con una cámara durante el giro. No se trata como NO OK.' },
+    alarma: { tipo: 'lectura', titulo: 'Lectura inválida', causa: 'Dos cámaras leen códigos distintos, o se perdió comunicación con una cámara durante el giro. No se trata como No Read.' },
     resolucion: 'El operario verifica cámaras, luces y comunicación; el bulto se lleva a revisión.',
     rearme: 'E0: ciclo cerrado y documentado, isla libre.',
   },
@@ -99,7 +99,7 @@ const CASOS_DEF = [
   },
   {
     id: 'luz', titulo: 'Luz parpadeante', prob: 0.3,
-    desc: 'Una luz destella débil y la confianza de la lectura baja. Si cae bajo el umbral pide limpieza del difusor (E5); si no, el bulto va a revisión como REVISAR.',
+    desc: 'Una luz destella débil y la confianza de la lectura baja. Si cae bajo el umbral pide limpieza del difusor (E5); si no, el resultado es No Read y el bulto va a revisión.',
     oportunidad: '30 % por bulto, en la lectura de la isla',
     alarma: { tipo: 'iluminacion', titulo: 'Iluminación inestable', causa: 'Destello débil o parpadeante: la confianza cayó bajo el umbral y la lectura no es válida.' },
     resolucion: 'El operario limpia el difusor y verifica el destello.',
@@ -264,8 +264,8 @@ export function initEscenarios(opts = {}) {
       flags.operario = e.target.checked;
       if (S) S.operarioRev = flags.operario;
       if (typeof log === 'function') log('Interfaz de operación', flags.operario
-        ? `Operario de revisión en planta: viene y lee los NO OK uno por uno en la cinta de desvío (tope de ${CAP_REVISION}).`
-        : `Sin operario: los NO OK se juntan en la cinta de desvío (tope de ${CAP_REVISION}); llena, S_EXC bloquea el desvío.`, 'Comando aceptado.');
+        ? `Operario de revisión en planta: viene y lee los bultos No Read uno por uno en la cinta de desvío (tope de ${CAP_REVISION}).`
+        : `Sin operario: los bultos No Read se juntan en la cinta de desvío (tope de ${CAP_REVISION}); llena, S_EXC bloquea el desvío.`, 'Comando aceptado.');
     };
   }
   const chkPl = doc.getElementById('chkPlato');

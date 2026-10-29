@@ -2,7 +2,7 @@
 // Las cajas SE BAJAN DEL CAMIÓN y las cintas corren AL REVÉS vs exportación:
 // camión → descarga → isla (plato + 3 cámaras) → pallet/expedición.
 // Módulo desacoplado: no toca el estado global S; avisa por onPaso(p, i).
-// API: { PASOS, CAMS, FALTA, initRelato, irPaso, siguiente, anterior, ponerPlay }
+// API: { PASOS, CAMS, initRelato, irPaso, siguiente, anterior, ponerPlay }
 
 export const CAMS = {
   general:   { p: [-2.5, 7.2, 11.0],  t: [-0.8, 0.4, 0.6] },
@@ -18,61 +18,48 @@ export const CAMS = {
   revision:  { p: [0.4, 3.1, 7.9],    t: [-0.8, 0.6, 3.4] },
   monitor2:  { p: [0.06, 1.42, 5.75], t: [-0.1, 1.3, 4.1] },
   pallet:    { p: [8.6, 3.0, 4.4],    t: [6.2, 0.6, 0.2] },
-  expedicion:{ p: [10.6, 3.4, -6.0],  t: [7.0, 0.6, -1.0] },
-  arriba:    { p: [0.0, 15.5, 2.5],   t: [0.0, 0, 0.9] },
+  expedicion:{ p: [3.6, 4.4, -5.4],   t: [9.0, 0.9, 0.2] },
+  almacen:   { p: [6.2, 6.0, -5.9],   t: [12.2, 1.6, 0.0] },
+  amr:       { p: [-7.4, 2.6, -3.4],  t: [-10.6, 0.9, 0.0] },
+  muelles:   { p: [-6.5, 6.5, 9.5],   t: [-14.5, 0.0, 0.0] },
+  arriba:    { p: [2.0, 19.0, 3.5],   t: [2.0, 0, 0.6] },
 };
 CAMS.planta = CAMS.general; CAMS.desvio = CAMS.pusher; CAMS.lectores = CAMS.giro;   // botones de la barra del visor
 
 
-export const FALTA = [
-  ['Ritmo real de la línea', 'medir cuántos bultos por minuto bajan del camión (la simulación usa un valor ilustrativo).'],
-  ['Tamaños de bulto', 'el plato de Ø 0,72 m cubre los 4 formatos del TPI; confirmar el más grande antes de fijar la celda.'],
-  ['Integración con el PLC', 'sumar a la tabla de E/S del S7-1200 el encoder del plato, el disparo de las 3 cámaras y la presencia en la isla.'],
-  ['Etiquetas reales', 'la demo usa una maqueta estilo Correo Argentino, sin datos reales: falta probar con etiquetas impresas del operador.'],
-  ['Luz y óptica', 'elegir lentes y anillos según la distancia de cada cámara y verificar la foto con el plato girando.'],
-  ['FlexSim', 'volver a correr los experimentos H3 con el tiempo de ciclo de la isla (3,2 s por vuelta).'],
-];
-
 const TOUR_ISLA = ['fotocelula', 'plato', 'camaraSup', 'camaraInf', 'camaraLat', 'luces', 'pc'];
 
 export const PASOS = [
-  { k: 'TracePack · TPI 2026 · Grupo 1', t: 'Isla de inspección 360°', p: 'Los bultos <b>se bajan del camión</b>, pasan por una isla que los <b>mira por todas sus caras</b> y, además de leer el código, <b>controla que la etiqueta esté bien impresa y diga lo que tiene que decir</b>. Solo lo correcto sigue a expedición.',
+  { k: 'TracePack · TPI 2026 · Grupo 1', t: 'Isla de inspección 360°', p: 'Los bultos <b>se bajan del camión</b> con un AMR, pasan por una isla que <b>busca el código de barras en todas sus caras</b> y, si lo lee, <b>se registran solos</b> en el ERP. Si no, se desvían a revisión manual.',
     lista: ['Recorrido de unos 9 minutos sobre la línea de importación, en 3D.', 'Flechas o espacio para avanzar y pausar; <b>Explorar</b> para mover la cámara; menú <b>Simulación</b> para el HMI, el GRAFCET y los escenarios.'],
     cifras: [['3 cámaras', 'arriba, abajo y al costado, cada una con su luz'], ['1 vuelta', 'del plato: 3,2 s por bulto']], cam: [[0, 'general']], orbita: true, control: true, hud: null, call: ['camion', 'isla', 'pallet', 'expedicion'], dur: 26 },
-  { k: 'El problema', t: 'La etiqueta puede venir en cualquier cara… y mal', p: 'En importación el bulto llega <b>como lo cargaron</b>: la etiqueta puede estar arriba, abajo o en un costado. Y no alcanza con encontrarla: puede venir <b>mal impresa</b> o con <b>datos que no coinciden</b> con el aviso de llegada.',
-    lista: ['Un <b>No Read</b> frena la trazabilidad: el bulto queda sin registrar.', 'Un cabezal de impresora con un punto muerto deja una <b>línea blanca</b>: hoy nadie la ve hasta que el código deja de escanear.', 'Un <b>código postal o un peso distinto</b> al del ERP termina en un envío mal ruteado.'],
-    forzar: ['linea', 'ok', 'dato'], cam: [[0, 'descarga'], [24, 'general']], control: false, hud: null, call: ['camion', 'expedicion'], dur: 42 },
-  { k: 'Importación', t: 'Del camión a la isla', p: 'El camión está al <b>inicio</b> de la línea: los bultos bajan a la <b>acumulación</b> y el <b>alimentador</b> los entrega <b>de a uno</b> a la isla. Las cintas corren al revés que en una línea de exportación: <b>entran desde el camión</b>.',
-    lista: ['La secuencia de la estación es la misma del hito H2: <b>E0 a E5</b>.', 'La isla reemplaza a la estación de 6 lectores en el mismo lugar de la cinta.', 'El bulto NO OK se separa <b>antes</b> de armar el pallet de expedición.'],
-    cifras: [['≤ 3', 'bultos en acumulación'], ['1 a 1', 'el plato atiende un bulto por vez']], cam: [[0, 'descarga'], [16, 'general']], control: true, hud: null, call: ['camion', 'descarga', 'isla', 'pusher', 'revision', 'pallet'], dur: 38 },
-  { k: 'El equipo', t: 'Una celda cerrada con un plato de vidrio', p: 'Perfiles de aluminio y <b>policarbonato ahumado</b>: adentro la luz es siempre la misma. El bulto entra por un túnel con cortina de tiras y queda sobre un <b>plato de vidrio</b> que gira sobre un <b>rodamiento</b>: el motor va al costado, así <b>el centro queda libre</b> para mirar desde abajo.',
-    lista: ['Fotocélula en la boca: avisa que entra un bulto.', 'Encoder en el rodamiento: el PLC sabe en qué ángulo está el plato.', 'Baliza de torre: verde libre, ámbar girando, roja con falla, celeste en cada disparo.'],
+  { k: 'El problema', t: 'Registrar cada bulto, uno por uno', p: 'Hoy, para registrar cada unidad, un operario <b>toma el bulto, busca la etiqueta</b>, lo gira si hace falta y la lee con una <b>pistola lectora</b>. Los bultos importados llegan <b>con la etiqueta en cualquier cara y orientación</b>.',
+    lista: ['Es lento y depende de la persona.', 'Un bulto sin registrar rompe la trazabilidad.', 'La variable a medir es una sola: el <b>resultado de lectura</b>, OK o <b>No Read</b>.'],
+    cam: [[0, 'muelles'], [20, 'descarga']], control: false, hud: null, call: ['camion'], dur: 38 },
+  { k: 'Descarga', t: 'El AMR baja los bultos del camión', p: 'Con el camión en posición (<b>S_CAMION</b>), el PLC <b>autoriza cada recogida</b> solo si la acumulación tiene lugar (menos de 3 bultos). El AMR mira con <b>visión 3D</b>, toma el bulto con <b>dos cabezales de ventosas</b> y lo apoya en el punto de carga (<b>S_CARGA</b>).',
+    lista: ['Esperar por falta de lugar es una condición normal, no una alarma.', 'Se retira de la puerta hacia adentro y de arriba hacia abajo.', 'Cuando el camión queda vacío, se va y llega el siguiente.'],
+    cifras: [['≤ 3', 'bultos en acumulación'], ['R0–R6', 'secuencia del AMR']], cam: [[0, 'amr'], [24, 'descarga']], control: true, hud: null, call: ['camion', 'descarga'], dur: 40 },
+  { k: 'La isla 360°', t: 'Una celda cerrada con un plato de vidrio', p: 'Perfiles de aluminio y <b>policarbonato ahumado</b>: adentro la luz es siempre la misma. El bulto entra por un túnel con cortina de tiras y queda sobre un <b>plato de vidrio</b> que gira sobre un <b>rodamiento</b>: el motor va al costado, así <b>el centro queda libre</b> para leer desde abajo.',
+    lista: ['Fotocélula en la boca (S_ING): crea el ID del ciclo.', 'Encoder en el rodamiento: confirma la detención antes de disparar.', 'Baliza de torre: verde libre, ámbar girando, roja con falla, celeste en cada disparo.'],
     cifras: [['Ø 0,72 m', 'plato de vidrio templado'], ['360°', 'una vuelta por bulto']], cam: [[0, 'isla']], control: true, hud: null, call: ['fotocelula', 'plato', 'camaraSup', 'camaraInf', 'camaraLat', 'luces', 'pc'], dur: 40, chips: true, tour: TOUR_ISLA },
-  { k: 'Las tres cámaras', t: 'Arriba, abajo y al costado, cada una con su luz', p: '<b>C1</b> mira desde arriba con un <b>anillo de LED</b>. <b>C2</b> está dentro del gabinete y mira <b>a través del vidrio</b> con un anillo difuso: lee la cara de abajo sin dar vuelta el bulto. <b>C3</b> mira el costado entre <b>dos barras de LED</b>: con el giro ve <b>los cuatro lados</b>.',
+  { k: 'Las tres cámaras', t: 'Arriba, abajo y al costado, cada una con su luz', p: '<b>C1</b> lee desde arriba con un <b>anillo de LED</b>. <b>C2</b> está dentro del gabinete y lee <b>a través del vidrio</b> con un anillo difuso: no hace falta dar vuelta el bulto. <b>C3</b> lee el costado entre <b>dos barras de LED</b>: con el giro ve <b>los cuatro lados</b>.',
     lista: ['Con eso se cubren las 6 caras del bulto en una sola vuelta.', 'Cada luz destella 60 a 100 µs: la foto sale nítida aunque el plato gire.', 'Las tres cámaras van por cable a una PC industrial colgada de la celda.'],
     cam: [[0, 'sup'], [11, 'inf'], [22, 'lat']], control: true, hud: null, call: ['camaraSup', 'camaraInf', 'camaraLat'], dur: 34, fov: true, chips: true },
-  { k: 'El giro', t: 'La fotocélula dispara, el plato da una vuelta', p: 'El bulto corta el haz y queda en el plato: <b>gira 360° en 3,2 segundos</b> y cada cámara dispara cuando le toca. La que encuentra la etiqueta <b>la lee</b>; las otras confirman que en su cara no hay otra.',
-    lista: ['Fijate en el cono de luz de cada cámara cuando dispara.', 'El rótulo sobre el bulto dice qué cámara encontró la etiqueta.', 'En la pantalla del control, la vista de esa cámara queda resaltada.'], cam: [[0, 'giro']], control: true, hud: 'vivo', call: ['plato'], dur: 38, fov: true, chips: true, foco: 'plato' },
-  { k: 'Qué controla', t: 'Cuatro controles sobre la etiqueta', p: 'La foto se compara con el <b>diseño de la etiqueta</b> y con los <b>datos del envío en el ERP</b>. Lo visual sale en 1 a 2 segundos; el texto, un segundo después.',
-    lista: ['<b>Impresión:</b> tinta de más o de menos, recuadros cortados, impresión corrida.', '<b>Barra de control:</b> un punto muerto del cabezal la cruza con una línea blanca.', '<b>Texto, campo por campo:</b> destinatario, código postal, peso, fecha y declaración de aduana contra el ERP.', '<b>Código de barras:</b> se lee como un escáner (Code 128); si no lee, es No Read.'],
-    nota: 'Las etiquetas de la demo son una maqueta estilo Correo Argentino: remitente, destinatario y número de envío son inventados.',
-    cam: [[0, 'isla'], [22, 'monitor1']], control: true, hud: 'vivo', call: ['pc'], dur: 46, fov: true, chips: true },
-  { k: 'Resultado', t: 'Bulto OK: se registra y sigue a expedición', p: 'Si la etiqueta está bien y coincide con el ERP, el bulto <b>se registra con su ID de ciclo</b> (E2) y <b>sigue solo</b>: se arma el pallet y sale a expedición.',
-    lista: ['Queda guardada la foto de las tres caras y el resultado, con su número de envío.', 'Es la prueba ante un reclamo: se puede mostrar cómo llegó el bulto.'], forzar: ['ok', 'ok'], cam: [[0, 'isla'], [16, 'pallet']], control: true, hud: 'vivo', call: ['pallet', 'expedicion'], dur: 38, chips: true },
-  { k: 'Resultado', t: 'Bulto NO OK: se desvía y vuelve a pasar', p: 'Si hay un defecto o un dato que no coincide, el bulto es <b>NO OK</b>: el <b>desviador</b> lo empuja a la rampa de rodillos y baja a la <b>cinta de desvío</b>, donde queda frenado esperando revisión.',
-    lista: ['Ejemplo: el código postal impreso dice <b>X2440</b> y el ERP dice <b>X2400</b>.', 'En la pantalla de la cinta de desvío el operario ve la etiqueta con los errores señalados y toca el <b>tick verde</b> si la lectura fue correcta o la <b>cruz roja</b> si no lo fue.', 'En los dos casos el bulto sube por la cinta de vuelta y <b>pasa de nuevo por la isla</b>.'], forzar: ['dato', 'linea', 'dato', 'ok'],
-    cam: [[0, 'isla'], [9, 'pusher'], [20, 'revision']], control: true, hud: 'vivo', pantalla: 'revision', call: ['pusher', 'revision'], dur: 62, chips: true },
-  { k: 'Lo que ve el operario', t: 'Cada error, señalado y con su precisión', p: 'Primero un <b>pantallazo verde o rojo</b> con la lectura y su precisión; después la etiqueta con los <b>errores numerados</b> y, campo por campo, lo que dice el ERP, lo que se leyó y qué tan seguro está.',
-    lista: ['Rojo: dato distinto o línea cortada. Ámbar: lectura dudosa.', 'Cada error dice de qué cámara vino.', 'Todo queda en el histórico, exportable a CSV.'], cam: [[0, 'monitor2']], control: true, hud: 'detalle', call: [], dur: 44, detalle: 'dato', vista: 'izq', monitor: 'dato' },
-  { k: 'Control', t: 'La misma secuencia E0–E5', p: 'El PLC sigue la secuencia del hito H2. La isla solo cambia lo que pasa en <b>E1</b>: en vez de 6 lectores fijos, <b>una vuelta del plato y tres disparos</b>. No Read y NO OK van a E3; las fallas (ERP caído, falta de aire, plato que no confirma) van a <b>E5</b>.',
-    lista: ['La etapa activa se resalta en vivo.', 'Desde el menú Simulación se abren el HMI y los escenarios para provocar fallas.'],
-    cam: [[0, 'isla']], control: true, hud: null, panel: 'grafcet', call: ['isla'], dur: 40 },
-  { k: 'Comparación', t: 'Qué gana la línea con la isla', p: 'La estación de 6 lectores responde <b>¿qué bulto es?</b>. La isla responde eso y además <b>¿la etiqueta está bien?</b>',
-    lista: [], nota: 'Comparación cualitativa: los tiempos son supuestos de la simulación.',
-    cam: [[0, 'arriba']], control: true, hud: null, panel: 'costos', call: [], dur: 50 },
-  { k: 'Para llevarlo a la línea', t: 'Qué falta', p: '<ul class="falta">' + FALTA.map(([a, b]) => `<li><i></i><span><b>${a}:</b> ${b}</span></li>`).join('') + '</ul>',
-    nota: 'Todo lo de esta presentación es simulado: las fotos y los datos de las etiquetas son de maqueta.',
-    cam: [[0, 'general']], control: true, hud: null, call: ['camion', 'isla', 'revision', 'pallet', 'expedicion'], dur: 45, orbita: true },
+  { k: 'La lectura', t: 'Una vuelta, tres disparos, un resultado', p: 'El bulto queda detenido en el plato y el encoder lo confirma. El plato <b>gira 360° en 3,2 s</b> y cada cámara dispara cuando le toca. La que tiene la etiqueta enfrente <b>decodifica el código</b>.',
+    lista: ['Fijate en el cono de luz de cada cámara cuando dispara.', 'El rótulo sobre el bulto dice qué cámara encontró la etiqueta.', 'Resultado: <b>OK</b> si hay un código válido; <b>No Read</b> si las tres terminaron bien y ninguna lo leyó.'], cam: [[0, 'giro'], [24, 'monitor1']], control: true, hud: 'vivo', call: ['plato', 'pc'], dur: 42, fov: true, chips: true, foco: 'plato' },
+  { k: 'Lectura OK', t: 'Se registra y sigue a expedición', p: 'Con un código válido, el PLC <b>pide el registro al ERP con el ID del ciclo</b> (E2) y <b>retiene el bulto</b> hasta recibir la confirmación para ese mismo ID. Recién ahí sale (E4) y se arma el pallet de expedición.',
+    lista: ['Quedan guardadas las 3 fotos y el código, con el ID del ciclo.', 'Si el ERP no confirma a tiempo, no es No Read: es una falla y va a E5.'], forzar: ['ok', 'ok'], cam: [[0, 'isla'], [18, 'pallet']], control: true, hud: 'vivo', call: ['pallet', 'expedicion'], dur: 38, chips: true },
+  { k: 'No Read', t: 'Se desvía a revisión manual', p: 'Si ninguna cámara obtiene un código válido, el resultado es <b>No Read</b> (E3): el <b>desviador</b> empuja el bulto (S_EXT → S_PASO → S_RET) a la rampa de rodillos y queda frenado en la <b>cinta de desvío</b>.',
+    lista: ['En la pantalla de la cinta de desvío el operario ve las 3 fotos y por qué no se leyó.', 'Lo lee con el <b>lector de mano</b> o, si el código está dañado, <b>le pega una etiqueta nueva</b>; en los dos casos queda registrado.', 'El bulto vuelve por la <b>cinta de retorno</b> y sigue a expedición.'], forzar: ['tapada', 'rayada', 'ok'],
+    cam: [[0, 'isla'], [9, 'pusher'], [20, 'revision']], control: true, hud: 'vivo', pantalla: 'revision', call: ['pusher', 'revision'], dur: 60, chips: true },
+  { k: 'Lo que ve el operario', t: 'Por qué no se leyó, con las 3 fotos', p: 'Primero un <b>pantallazo verde o rojo</b> con el resultado; después la etiqueta con el <b>recuadro del código</b>, qué cámara lo leyó (o que ninguna pudo) y la <b>acción del PLC</b>.',
+    lista: ['Verde: código válido, se registra. Rojo: No Read, a revisión.', 'Todo queda en el histórico con su ID de ciclo, exportable a CSV.'], cam: [[0, 'monitor2']], control: true, hud: 'detalle', call: [], dur: 40, detalle: 'tapada', vista: 'izq', monitor: 'tapada' },
+  { k: 'Control', t: 'La secuencia E0–E5', p: 'El PLC S7-1200 sigue una secuencia de seis etapas. Mirá cómo se recorre cada una.',
+    lista: [], cam: [[0, 'isla']], control: true, hud: null, panel: 'grafcet', grafcetTour: true, call: [], dur: 64 },
+  { k: 'Expedición', t: 'Del pallet al almacén', p: 'Cada <b>12 bultos identificados</b> se completa un pallet, se envuelve con film y un <b>autoelevador</b> lo lleva a un lugar libre del <b>rack</b>. Cuando el rack se llena, sale el pallet más antiguo hacia despacho.',
+    lista: ['Al almacén solo llegan bultos registrados: por la isla o a mano en la revisión.', 'El puesto de la línea arma enseguida un pallet nuevo.'], cam: [[0, 'expedicion'], [20, 'almacen']], control: true, hud: null, call: ['pallet', 'expedicion'], dur: 40 },
+  { k: 'Ventajas', t: 'Por qué una isla 360°', p: 'Una celda compacta que <b>encuentra el código en cualquier cara</b> y deja la evidencia de cada lectura.',
+    lista: [], cam: [[0, 'arriba']], control: true, hud: null, panel: 'costos', call: [], dur: 50, orbita: true },
 ];
 
 // ---------------------------------------------------------------- estado interno

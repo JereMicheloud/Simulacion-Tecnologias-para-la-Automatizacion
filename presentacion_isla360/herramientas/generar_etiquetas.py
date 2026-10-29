@@ -1,13 +1,17 @@
 """Etiquetas MOCK estilo Correo Argentino para la presentación de la facultad.
 
 No usa datos reales: remitente, destinatario y número de envío son inventados.
-Genera, para cada caso (ok / dato / linea):
+Como en el TPI, la isla solo LEE EL CÓDIGO DE BARRAS: el resultado es OK (código
+válido, se registra) o No Read (la adquisición termina bien pero no hay código válido).
+Genera, para cada caso (ok / tapada / rayada):
   assets/etq_<caso>.jpg            textura de la etiqueta pegada en el bulto 3D
   assets/caso_<caso>_alineada.jpg  la etiqueta enderezada (lo que compara el sistema)
   assets/caso_<caso>_foto.jpg      la "foto" de la cámara (perspectiva, luz, cartón)
   assets/casos.json                el resultado de la lectura, mismo formato que la estación real
 
-El código de barras es un Code 128 real (zxing-cpp) y se verifica leyéndolo de la imagen.
+El código de barras es un Code 128 real (zxing-cpp): el script verifica que en «ok» se lea
+y que en «tapada» (un pliegue de cinta de embalar lo cruza) y «rayada» (rayones y una mancha)
+de verdad NO se lea.
 
 Uso (desde la carpeta del proyecto, con las librerías del .venv):
   PYTHONPATH=.venv/Lib/site-packages python presentacion_facultad/herramientas/generar_etiquetas.py
@@ -100,9 +104,6 @@ def code128(lz, texto, x, y, w, h):
 
 def dibujar(caso):
     v = dict(DATOS)
-    if caso == 'dato':                                        # la impresora sacó datos de otro envío
-        v['cp'] = 'X2440'
-        v['peso'] = '3,35 kg'
     lz = Lienzo()
     t = lz.texto
     # marco y marcas de esquina
@@ -165,12 +166,19 @@ def dibujar(caso):
       campo='Leyenda de muestra')
     t(6, 103.4, 'TPI 2026 · UTN FRSFco · Grupo 1', F_NOR(2.3))
 
-    # barra de control (rectángulo negro sólido): un punto muerto del cabezal la cruza en blanco
-    lz.rect(142.83, 3.83, 3.58, 95.58, relleno=NEGRO, ancho=0)
-    if caso == 'linea':                                       # elemento del cabezal muerto: línea blanca en el sentido de avance
-        y = 51.33
-        lz.d.rectangle([0, mm(y), W, mm(y + 0.42)], fill=(250, 250, 247))
+    if caso == 'tapada':                                      # un pliegue de cinta de embalar cruza el código
+        capa = Image.new('RGBA', (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(capa)
+        d.polygon([(mm(30), mm(19)), (mm(52), mm(19)), (mm(62), mm(50)), (mm(40), mm(50))], fill=(214, 168, 96, 235))
+        d.line([(mm(41), mm(19)), (mm(51), mm(50))], fill=(160, 120, 60, 255), width=mm(0.5))      # el doblez
+        lz.im.paste(capa, (0, 0), capa)
+    elif caso == 'rayada':                                    # rayones y una mancha de grasa sobre las barras
+        rnd = random.Random(5)
+        for _ in range(9):
+            y0 = rnd.uniform(25, 41); ang = rnd.uniform(-0.25, 0.25)
+            lz.d.line([(mm(6), mm(y0)), (mm(92), mm(y0 + 86 * ang))], fill=(250, 250, 247), width=mm(rnd.uniform(0.5, 1.1)))
+        lz.d.ellipse([mm(44), mm(27), mm(66), mm(41)], fill=(40, 40, 40))
     return lz
+CAJA_CODIGO = [6.0, 25.6, 86.0, 15.5]                         # dónde está el código en la etiqueta (mm)
 
 
 def carton(semilla=99):
@@ -226,39 +234,21 @@ def leer_codigo(im):
     return r[0].text if r else None
 
 
-def resultado(caso, lz, codigo):
-    rnd = random.Random({'ok': 7, 'dato': 11, 'linea': 13}[caso])
-    campos = []
-    for c in lz.campos:
-        distinto = c['visto'] != c['esperado']
-        cert = round(rnd.uniform(0.95, 1.0), 2)
-        x, y, w, h = c['caja']
-        if caso == 'linea' and y < 51.75 and y + h > 51.33:          # la línea blanca le pasa por encima: se lee con menos certeza
-            campos.append({**c, 'estado': 'REVISAR', 'certeza': 0.71, 'conf': 0.71, 'distinto': False})
-            continue
-        campos.append({**c, 'estado': 'FALTA' if distinto else 'OK', 'certeza': cert, 'conf': cert, 'distinto': distinto})
-    barra = {'ok': True, 'densidad': 1.0, 'lineas_blancas': [], 'filas_claras': 0, 'motivo': '', 'caja': [142.83, 3.83, 3.58, 95.58]}
-    defectos = []
-    if caso == 'linea':
-        motivo = 'Línea blanca en la barra de control (1): probable elemento del cabezal muerto.'
-        barra.update(ok=False, motivo=motivo, lineas_blancas=[{'y_mm': 51.33, 'ancho_mm': 0.42, 'caja': [142.83, 51.33, 3.58, 0.42]}])
-        defectos.append({'tipo': 'linea_blanca', 'x_mm': 6.0, 'y_mm': 51.1, 'ancho_mm': 62.0, 'alto_mm': 0.9, 'area_mm2': 26.0, 'gravedad': 'NO_OK', 'origen': 'modelo'})
-    elif caso == 'dato':
-        d = [c for c in campos if c['distinto']]
-        motivo = f'Dato distinto en {d[0]["campo"]}: dice «{d[0]["visto"]}» y debería decir «{d[0]["esperado"]}» ({len(d)} datos distintos).'
-    else:
-        motivo = 'Sin diferencias con el diseño ni con los datos del envío.'
-    ver = 'OK' if caso == 'ok' else 'NO_OK'
+MOTIVOS = {
+    'ok': 'Código Code 128 leído y válido.',
+    'tapada': 'No Read: un pliegue de cinta de embalar tapa parte del código; ninguna cámara obtiene un código válido.',
+    'rayada': 'No Read: el código está rayado y manchado; ninguna cámara obtiene un código válido.',
+}
+
+
+def resultado(caso, codigo):
+    ok = caso == 'ok'
     return {
-        'veredicto': ver, 'motivo': motivo,
-        'confianza': {'ok': 0.987, 'dato': 0.979, 'linea': 0.984}[caso],
-        'segundos': {'ok': 2.05, 'dato': 2.18, 'linea': 2.12}[caso],
-        'campos': campos,
-        'codigos': [{'esperado': ENVIO, 'leido': codigo, 'estado': 'OK' if codigo == ENVIO else 'FALTA', 'motivo': '' if codigo == ENVIO else 'no se lee'}],
-        'defectos': defectos, 'barra': barra,
-        'formas': [{'tipo': n, 'estado': 'OK'} for n in ['marco', 'separador_1', 'separador_2', 'separador_3', 'bloque_ruteo', 'barra_control']],
-        'imagenes': [],
-        'datos': {'origen': 'ERP (mock)', 'caja': ENVIO, 'producto': DATOS['servicio'], 'plantilla': 'mock_correo_150x110'},
+        'veredicto': 'OK' if ok else 'NO_READ', 'motivo': MOTIVOS[caso],
+        'confianza': {'ok': 0.99, 'tapada': 0.97, 'rayada': 0.98}[caso],         # certeza de la adquisición (con o sin código)
+        'segundos': {'ok': 0.42, 'tapada': 0.61, 'rayada': 0.58}[caso],
+        'codigo': {'simbologia': 'Code 128', 'leido': codigo, 'caja': CAJA_CODIGO},
+        'datos': {'caja': codigo or 'sin código', 'producto': DATOS['servicio'] if ok else 'Bulto sin identificar'},
         'px_mm': PX,
     }
 
@@ -266,18 +256,23 @@ def resultado(caso, lz, codigo):
 def main():
     ASSETS.mkdir(exist_ok=True)
     todo = {}
-    for i, caso in enumerate(['ok', 'dato', 'linea']):
+    for i, caso in enumerate(['ok', 'tapada', 'rayada']):
         lz = dibujar(caso)
         im = lz.im.filter(ImageFilter.GaussianBlur(0.35))     # tinta térmica: borde apenas suave
         codigo = leer_codigo(im)
-        assert codigo == ENVIO, f'{caso}: el código no se lee ({codigo!r})'
+        if caso == 'ok':
+            assert codigo == ENVIO, f'{caso}: el código no se lee ({codigo!r})'
+        else:
+            assert codigo is None, f'{caso}: el código todavía se lee ({codigo!r}): el daño no alcanza'
         im.save(ASSETS / f'caso_{caso}_alineada.jpg', quality=90)
         foto(im, 100 + i).save(ASSETS / f'caso_{caso}_foto.jpg', quality=88)
         im.resize((680, round(680 * H / W)), Image.LANCZOS).save(ASSETS / f'etq_{caso}.jpg', quality=90)
-        todo[caso] = resultado(caso, lz, codigo)
-        print(caso, todo[caso]['veredicto'], '·', len(todo[caso]['campos']), 'campos · código', codigo)
+        todo[caso] = resultado(caso, codigo)
+        print(caso, todo[caso]['veredicto'], '· código', codigo)
     carton().save(ASSETS / 'carton.jpg', quality=85)
-    for viejo in ASSETS.glob('caso_*_marcada.jpg'):
+    for viejo in list(ASSETS.glob('caso_*_marcada.jpg')) + [ASSETS / f'{p}_{k}{e}' for p in ('caso', 'etq') for k in ('dato', 'linea') for e in ('', '_foto.jpg', '_alineada.jpg', '.jpg')]:
+        if not viejo.exists():
+            continue
         viejo.unlink()
     (ASSETS / 'casos.json').write_text(json.dumps(todo, ensure_ascii=False, indent=1), encoding='utf-8')
 
