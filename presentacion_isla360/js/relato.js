@@ -59,7 +59,9 @@ export const PASOS = [
   { k: 'Expedición', t: 'Del pallet al almacén', p: 'Cada <b>12 bultos identificados</b> se completa un pallet, se envuelve con film y un <b>autoelevador</b> lo lleva a un lugar libre del <b>rack</b>. Cuando el rack se llena, sale el pallet más antiguo hacia despacho.',
     lista: ['Al almacén solo llegan bultos registrados: por la isla o a mano en la revisión.', 'El puesto de la línea arma enseguida un pallet nuevo.'], cam: [[0, 'expedicion'], [20, 'almacen']], control: true, hud: null, call: ['pallet', 'expedicion'], dur: 40 },
   { k: 'Ventajas', t: 'Por qué una isla 360°', p: 'Una celda compacta que <b>encuentra el código en cualquier cara</b> y deja la evidencia de cada lectura.',
-    lista: [], cam: [[0, 'arriba']], control: true, hud: null, panel: 'costos', call: [], dur: 50, orbita: true },
+    lista: [], cam: [[0, 'general']], control: true, hud: null, panel: 'costos', call: [], dur: 50, orbita: true },
+  { k: 'Cierre', t: '¡Gracias!', p: 'Recorrido final por toda la planta.', lista: [],
+    cam: [[0, 'general']], control: false, hud: null, call: [], dur: 75, cierre: true },
 ];
 
 // ---------------------------------------------------------------- estado interno

@@ -43,6 +43,7 @@ mientras presentás; cerrala para terminar. No necesita internet, Python ni inst
 - **Explorar**: pausa el recorrido y deja mover la cámara con el mouse. La rueda acerca **hacia donde apunta el
   mouse** (también pellizco en el touchpad); clic derecho arrastra. Tocá un equipo para ver su ficha.
 - **La secuencia E0–E5** se muestra en pantalla completa: el diagrama hace zoom a cada etapa y la explica.
+- **Cierre:** recorrido en primera persona por toda la planta, apenas desenfocado, con el agradecimiento y «¿Preguntas?».
 - Menú **Simulación** (abajo a la izquierda): vistas de cámara (incluidas C1, C2 y C3 de cerca), velocidad,
   **HMI** estilo TracePack, **GRAFCET E0–E5** en vivo, **histórico** exportable a CSV y **escenarios** para
   provocar casos atípicos (ERP caído, falta de aire, plato descentrado, No Read…).

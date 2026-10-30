@@ -203,8 +203,11 @@ function aplicarPaso(p, i) {
   resaltar(p.foco || null);
   TOUR.ids = p.tour || null; TOUR.i = -1; TOUR.t = TOUR.dur;
   if (!p.tour) $('info')?.classList.add('oculto');                   // la ficha del recorrido no queda pegada al cambiar de paso
+  document.body.classList.toggle('en-cierre', !!p.cierre);
+  $('cierre')?.classList.toggle('oculto', !p.cierre);
+  if (p.cierre) { tween = null; mostrarLlamadas([]); }
   orbitar = !!p.orbita && !estadoRelato().libre;
-  if (!estadoRelato().libre && p.cam?.[0]) irCamara(p.cam[0][1]);
+  if (!estadoRelato().libre && p.cam?.[0] && !p.cierre) irCamara(p.cam[0][1]);
 }
 
 // Detalle de una lectura: la etiqueta con el recuadro del código y la ficha (OK / No Read).
@@ -234,6 +237,26 @@ function renderDetalle(k) {
   if (dl) dl.innerHTML = filas.map(([t, v, bien]) => `<li class="${bien ? 'OK' : 'FALTA'}"><span class="pt"></span><span class="tx"><span>${esc(t)}</span><small>${esc(v)}</small></span><span class="pc"></span></li>`).join('');
 }
 $('d-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) renderDetalle(b.dataset.c); });
+
+// ------------------------------------------------------------------ cierre: recorrido en primera persona (a la altura de los ojos)
+// [posición, hacia dónde mira]: camión → AMR → línea → isla → desviador → pallet → rack → desvío → toma general
+const RECORRIDO = [
+  [[-11.0, 1.7, -2.6], [-13.5, 1.2, 0.0]], [[-9.6, 1.7, -1.9], [-9.0, 0.9, 0.4]], [[-6.5, 1.65, -1.3], [-3.5, 1.0, 0.0]],
+  [[-3.2, 1.65, -1.15], [-0.2, 1.1, 0.0]], [[-1.0, 1.6, -1.05], [-0.2, 1.0, 0.0]], [[0.6, 1.65, -1.2], [1.9, 0.9, 0.4]],
+  [[1.6, 1.7, -2.0], [3.5, 0.9, 0.0]], [[3.8, 1.65, -1.2], [6.0, 0.6, 0.0]], [[7.4, 1.7, -1.6], [11.4, 1.6, -1.0]],
+  [[9.3, 1.8, 0.6], [12.0, 1.5, 1.5]], [[8.0, 1.75, 2.3], [2.0, 0.6, 3.1]], [[2.5, 1.7, 2.1], [-1.5, 0.7, 3.3]],
+  [[-1.6, 1.7, 1.7], [-0.2, 1.0, 0.0]], [[-3.5, 3.5, 5.5], [-0.5, 0.8, 0.0]], [[-2.5, 7.5, 11.5], [0.0, 0.5, 0.0]],
+];
+const CIERRE = {
+  pos: new THREE.CatmullRomCurve3(RECORRIDO.map(([p]) => new THREE.Vector3(...p)), false, 'centripetal'),
+  mira: new THREE.CatmullRomCurve3(RECORRIDO.map(([, m]) => new THREE.Vector3(...m)), false, 'centripetal'),
+  dur: 58,
+};
+function pasoCierre(t) {
+  const u = suave(Math.min(1, t / CIERRE.dur) * 0.98 + 0.01);
+  camera.position.copy(CIERRE.pos.getPoint(u)); controls.target.copy(CIERRE.mira.getPoint(u));
+  camera.position.y += Math.sin(t * 3.2) * 0.012 * (1 - u);                   // paso suave al caminar
+}
 
 // ------------------------------------------------------------------ cámara, resaltado, tour
 function irCamara(n, dur = 2.0) {
@@ -341,7 +364,10 @@ function avanzar(dt) {
   actualizarHMI();
   if (pasoActual?.grafcetTour && !estadoRelato().libre) pintarGrafcet(tourGrafcet(tRelato, dt), '');   // E0–E5 en pantalla completa, etapa por etapa
   else { salirTour(); pintarGrafcet(S.paso, sub); }
-  if (tween) {
+  if (pasoActual?.cierre && !estadoRelato().libre) {
+    pasoCierre(tRelato);
+    if (tRelato > CIERRE.dur) { const off = camera.position.clone().sub(controls.target), a = 0.03 * dt, c = Math.cos(a), s2 = Math.sin(a); camera.position.set(controls.target.x + off.x * c - off.z * s2, camera.position.y, controls.target.z + off.x * s2 + off.z * c); }
+  } else if (tween) {
     tween.k = Math.min(1, tween.k + dt / tween.dur); const e = suave(tween.k);
     camera.position.lerpVectors(tween.p0, tween.p1, e);
     controls.target.lerpVectors(tween.t0, tween.t1, e);
